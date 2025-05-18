@@ -1,0 +1,14 @@
+# PHP dependencies
+/vendor/
+
+# Environment config
+.env
+
+# IDE/editor files
+*.log
+*.swp
+.DS_Store
+
+# System files
+*.bak
+*.zip
