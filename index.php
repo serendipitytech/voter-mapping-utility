@@ -1,8 +1,19 @@
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
 
-$debug = false;
+$debug = isset($_GET['debug']) && $_GET['debug'] == '1';
+$debug_log = [];
 
+function debug_log($title, $variant, $content) {
+    global $debug, $debug_log;
+    if ($debug) {
+        $debug_log[] = [
+            'title' => $title,
+            'variant' => $variant,
+            'content' => is_array($content) ? print_r($content, true) : $content
+        ];
+    }
+}
 // Load .env
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->safeLoad();
@@ -54,6 +65,44 @@ function census_geocode($address) {
     }
     return [null, null];
 }
+function sort_voters_by_distance_and_street(&$voters, $origin_lat, $origin_lon) {
+    usort($voters, function ($a, $b) use ($origin_lat, $origin_lon) {
+        // Compute distance to origin using Haversine
+        $distA = haversine_distance($origin_lat, $origin_lon, $a['Latitude'], $a['Longitude']);
+        $distB = haversine_distance($origin_lat, $origin_lon, $b['Latitude'], $b['Longitude']);
+
+        // If distances are different, sort by distance
+        if ($distA != $distB) {
+            return $distA <=> $distB;
+        }
+
+        // Strip house number to sort by street name
+        $streetA = preg_replace('/^\d+\s*/', '', $a['Voter_Address']);
+        $streetB = preg_replace('/^\d+\s*/', '', $b['Voter_Address']);
+
+        return strcmp($streetA, $streetB);
+    });
+}
+
+function haversine_distance($lat1, $lon1, $lat2, $lon2) {
+    $earthRadius = 6371; // km
+
+    $latFrom = deg2rad($lat1);
+    $lonFrom = deg2rad($lon1);
+    $latTo = deg2rad($lat2);
+    $lonTo = deg2rad($lon2);
+
+    $latDelta = $latTo - $latFrom;
+    $lonDelta = $lonTo - $lonFrom;
+
+    $a = sin($latDelta / 2) ** 2 +
+         cos($latFrom) * cos($latTo) *
+         sin($lonDelta / 2) ** 2;
+
+    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+    return $earthRadius * $c; // distance in km
+}
 
 // === Input ===
 $error = '';
@@ -80,26 +129,56 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "Invalid party.";
     } else {
         list($latitude, $longitude) = census_geocode($address);
-
+        debug_log('Geocoding', 'info', "Address: $address, Latitude: $latitude, Longitude: $longitude");
         if ($latitude && $longitude) {
             try {
                 $geo_pdo = get_pdo($geo_db);
-                $stmt = $geo_pdo->prepare("
+
+                // Original query with placeholders
+                $raw_sql = "
                     SELECT address_id, lat, lon, full_address
                     FROM geocoded_addresses
                     WHERE (ST_Distance_Sphere(point(lon, lat), point(:lng, :lat)) / 1609.34) <= :radius
-                ");
-                $stmt->execute(['lat' => $latitude, 'lng' => $longitude, 'radius' => $radius]);
+                ";
+
+                // Define parameters
+                $params_debug = [
+                    ':lat'    => $latitude,
+                    ':lng'    => $longitude,
+                    ':radius' => $radius
+                ];
+
+                // Create a debug version of the query by replacing params
+                $debug_sql = $raw_sql;
+                foreach ($params_debug as $key => $value) {
+                    $debug_sql = str_replace($key, is_numeric($value) ? $value : "'$value'", $debug_sql);
+                }
+
+                debug_log('Interpolated Geo SQL', 'info', $debug_sql);
+                debug_log('Geo Query Params', 'secondary', $params_debug);
+
+                // Prepare and execute
+                $stmt = $geo_pdo->prepare($raw_sql);
+                $stmt->execute([
+                    'lat'    => $latitude,
+                    'lng'    => $longitude,
+                    'radius' => $radius
+                ]);
+
                 $nearby = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 $address_ids = array_column($nearby, 'address_id');
 
+                // Log raw data
+                debug_log('Nearby Addresses', 'info', $nearby);
+                debug_log('Address IDs', 'info', $address_ids);
+                
                 if (!empty($address_ids)) {
                     $placeholders = implode(',', array_fill(0, count($address_ids), '?'));
                     $where = "vm.county = ? AND vm.exp_date = '2100-12-31'";
                     $params = [$county];
 
                     if ($party !== 'ALL') {
-                        $where .= " AND d.party = ?";
+                        $where .= " AND vm.party = ?";
                         $params[] = $party;
                     }
 
@@ -124,6 +203,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         JOIN demographics d ON d.voter_id = vm.voter_id
                         WHERE $where
                     ";
+                    debug_log('SQL Query', 'info', $sql);
+                    debug_log('SQL Params', 'info', $params);
                     $stmt = $vat_pdo->prepare($sql);
                     $stmt->execute($params);
                     $voters = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -141,7 +222,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         }
                     }
                     unset($voter);
-                    sort_voters_by_address($voters);
+                    sort_voters_by_distance_and_street($voters, $latitude, $longitude);
                 }
             } catch (PDOException $e) {
                 $error = "Database error: " . $e->getMessage();
@@ -278,7 +359,8 @@ $display_fields = [
                 <div class="form-container p-3">
                     <form method="POST">
                         <?php
-                        $counties = ['ALA' => 'Alachua', 'BRE' => 'Brevard', 'BRO' => 'Broward', 'VOL' => 'Volusia', 'DAD' => 'Miami-Dade']; // expand as needed
+                        //$counties = ['ALA' => 'Alachua', 'BRE' => 'Brevard', 'BRO' => 'Broward', 'VOL' => 'Volusia', 'DAD' => 'Miami-Dade']; // expand as needed
+                        $counties = ['VOL' => 'Volusia', 'LEE' => 'Lee'];
                         $selected_county = $_POST['county'] ?? 'VOL';
                         ?>
                         <div class="mb-3">
@@ -375,7 +457,20 @@ $display_fields = [
     </div>
 <?php endif; ?>
     </div>
-
+<?php if (!empty($debug_log)): ?>
+<div class="container mt-4">
+    <?php foreach ($debug_log as $debug): ?>
+        <div class="card border-<?= $debug['variant'] ?> mb-3">
+            <div class="card-header bg-<?= $debug['variant'] ?> text-white fw-bold">
+                Debug: <?= htmlspecialchars($debug['title']) ?>
+            </div>
+            <div class="card-body">
+                <pre class="mb-0"><?= htmlspecialchars($debug['content']) ?></pre>
+            </div>
+        </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
     <!-- Bootstrap JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
