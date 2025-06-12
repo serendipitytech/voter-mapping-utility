@@ -30,8 +30,8 @@ $geo_db = [
 $vat_db = [
     'host'     => $_ENV['VAT_DB_HOST'] ?? 'fddc-vat-prod.flddc.org',
     'port'     => $_ENV['VAT_DB_PORT'] ?? 3306,
-    'dbname'   => $_ENV['VAT_DB_NAME'] ?? 'fddc_vat_sql',
-    'username' => $_ENV['VAT_DB_USER'] ?? 'vat_sql_read',
+    'dbname'   => $_ENV['VAT_DB_NAME'] ?? 'sql_db',
+    'username' => $_ENV['VAT_DB_USER'] ?? 'sql_read_user',
     'password' => $_ENV['VAT_DB_PASS'] ?? 'secret'
 ];
 
