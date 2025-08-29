@@ -432,7 +432,7 @@ $display_fields = [
             </thead>
             <tbody>
                 <?php foreach ($voters as $voter): ?>
-                    <tr>
+                    <tr data-voter-id="<?= htmlspecialchars($voter['VoterID'] ?? '') ?>">
                         <td><?= htmlspecialchars($voter['VoterID'] ?? '') ?></td>
                         <td><?= htmlspecialchars(($voter['Last_Name'] ?? '') . ', ' . ($voter['First_Name'] ?? '')) ?></td>
                         <td><?= nl2br(htmlspecialchars($voter['Voter_Address'] ?? '')) ?></td>
@@ -473,37 +473,116 @@ $display_fields = [
 <?php endif; ?>
     <!-- Bootstrap JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    const lat = <?php echo $latitude ?? 29.0283; ?>;
-    const lon = <?php echo $longitude ?? -81.3031; ?>;
-    const radiusInMeters = <?php echo isset($radius) ? $radius * 1609.34 : 1609.34; ?>;
+    <script>
+    const voters = <?php echo json_encode($voters); ?>;
 
-    const map = L.map('map').setView([lat, lon], 14);
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const toRad = deg => deg * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 +
+                  Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                  Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
 
-    // Add OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    function computeOptimalRoute(points) {
+        if (!points || points.length === 0) return [];
+        const n = points.length;
+        const dist = Array.from({ length: n }, () => Array(n).fill(0));
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                const d = haversineDistance(points[i].Latitude, points[i].Longitude,
+                                           points[j].Latitude, points[j].Longitude);
+                dist[i][j] = dist[j][i] = d;
+            }
+        }
 
-    // Search marker
-    const searchMarker = L.marker([lat, lon]).addTo(map).bindPopup("Search Address").openPopup();
+        const route = [0];
+        const visited = new Array(n).fill(false);
+        visited[0] = true;
+        for (let i = 1; i < n; i++) {
+            const last = route[route.length - 1];
+            let nearest = -1;
+            for (let j = 0; j < n; j++) {
+                if (!visited[j] && (nearest === -1 || dist[last][j] < dist[last][nearest])) {
+                    nearest = j;
+                }
+            }
+            route.push(nearest);
+            visited[nearest] = true;
+        }
 
-    // Radius circle
-    L.circle([lat, lon], {
-        radius: radiusInMeters,
-        color: 'red',
-        fillOpacity: 0.2
-    }).addTo(map);
+        let improved = true;
+        while (improved) {
+            improved = false;
+            for (let i = 1; i < n - 1; i++) {
+                for (let k = i + 1; k < n; k++) {
+                    const a = route[i - 1], b = route[i], c = route[k - 1], d = route[k];
+                    const current = dist[a][b] + dist[c][d];
+                    const swapped = dist[a][c] + dist[b][d];
+                    if (swapped < current) {
+                        route.splice(i, k - i, ...route.slice(i, k).reverse());
+                        improved = true;
+                    }
+                }
+            }
+        }
+        return route.map(idx => points[idx]);
+    }
+    </script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const lat = <?php echo $latitude ?? 29.0283; ?>;
+        const lon = <?php echo $longitude ?? -81.3031; ?>;
+        const radiusInMeters = <?php echo isset($radius) ? $radius * 1609.34 : 1609.34; ?>;
 
-    // Add voter markers
-    <?php foreach ($voters as $voter): ?>
-        L.marker([<?php echo $voter['Latitude']; ?>, <?php echo $voter['Longitude']; ?>])
-          .addTo(map)
-          .bindPopup(`<?php echo addslashes($voter['Voter_Name'] . "<br>" . $voter['Voter_Address']); ?>`);
-    <?php endforeach; ?>
-});
-</script>
+        const map = L.map('map').setView([lat, lon], 14);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Search marker
+        L.marker([lat, lon]).addTo(map).bindPopup("Search Address").openPopup();
+
+        // Radius circle
+        L.circle([lat, lon], {
+            radius: radiusInMeters,
+            color: 'red',
+            fillOpacity: 0.2
+        }).addTo(map);
+
+        const optimized = computeOptimalRoute(voters);
+
+        // Reorder table rows to match optimized route
+        const tbody = document.querySelector('table tbody');
+        if (tbody) {
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const rowMap = {};
+            rows.forEach(r => rowMap[r.dataset.voterId] = r);
+            tbody.innerHTML = '';
+            optimized.forEach(v => {
+                const row = rowMap[v.VoterID];
+                if (row) tbody.appendChild(row);
+            });
+        }
+
+        // Add voter markers in optimized order and draw route
+        const path = [];
+        optimized.forEach(v => {
+            path.push([v.Latitude, v.Longitude]);
+            L.marker([v.Latitude, v.Longitude])
+              .addTo(map)
+              .bindPopup(`${v.Voter_Name}<br>${v.Voter_Address}`);
+        });
+        if (path.length) {
+            L.polyline(path, { color: 'blue' }).addTo(map);
+        }
+    });
+    </script>
 <script>
 document.querySelector("form").addEventListener("submit", function () {
     document.getElementById("searchingIndicator").classList.remove("d-none");
