@@ -51,6 +51,23 @@ function sort_voters_by_address(&$voters) {
 }
 
 function census_geocode($address) {
+    $cacheDir = __DIR__ . '/cache';
+    $cacheFile = $cacheDir . '/geocode_cache.json';
+    static $cache = null;
+
+    if ($cache === null) {
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0777, true);
+        }
+        $cache = file_exists($cacheFile)
+            ? json_decode(file_get_contents($cacheFile), true)
+            : [];
+    }
+
+    if (isset($cache[$address])) {
+        return $cache[$address];
+    }
+
     $url = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress";
     $params = http_build_query([
         'address' => $address,
@@ -61,7 +78,9 @@ function census_geocode($address) {
     $data = json_decode($response, true);
     if (!empty($data['result']['addressMatches'])) {
         $coords = $data['result']['addressMatches'][0]['coordinates'];
-        return [$coords['y'], $coords['x']];
+        $cache[$address] = [$coords['y'], $coords['x']];
+        file_put_contents($cacheFile, json_encode($cache));
+        return $cache[$address];
     }
     return [null, null];
 }
@@ -134,21 +153,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             try {
                 $geo_pdo = get_pdo($geo_db);
 
-                // Original query with placeholders
+                $latDelta = $radius / 69.0;
+                $lonDelta = $radius / (cos(deg2rad($latitude)) * 69.0);
+                $latMin = $latitude - $latDelta;
+                $latMax = $latitude + $latDelta;
+                $lonMin = $longitude - $lonDelta;
+                $lonMax = $longitude + $lonDelta;
+
                 $raw_sql = "
                     SELECT address_id, lat, lon, full_address
                     FROM geocoded_addresses
-                    WHERE (ST_Distance_Sphere(point(lon, lat), point(:lng, :lat)) / 1609.34) <= :radius
+                    WHERE lat BETWEEN :lat_min AND :lat_max
+                      AND lon BETWEEN :lon_min AND :lon_max
+                      AND (ST_Distance_Sphere(point(lon, lat), point(:lng, :lat)) / 1609.34) <= :radius
                 ";
 
-                // Define parameters
                 $params_debug = [
-                    ':lat'    => $latitude,
-                    ':lng'    => $longitude,
-                    ':radius' => $radius
+                    ':lat'     => $latitude,
+                    ':lng'     => $longitude,
+                    ':radius'  => $radius,
+                    ':lat_min' => $latMin,
+                    ':lat_max' => $latMax,
+                    ':lon_min' => $lonMin,
+                    ':lon_max' => $lonMax
                 ];
 
-                // Create a debug version of the query by replacing params
                 $debug_sql = $raw_sql;
                 foreach ($params_debug as $key => $value) {
                     $debug_sql = str_replace($key, is_numeric($value) ? $value : "'$value'", $debug_sql);
@@ -157,12 +186,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 debug_log('Interpolated Geo SQL', 'info', $debug_sql);
                 debug_log('Geo Query Params', 'secondary', $params_debug);
 
-                // Prepare and execute
                 $stmt = $geo_pdo->prepare($raw_sql);
                 $stmt->execute([
-                    'lat'    => $latitude,
-                    'lng'    => $longitude,
-                    'radius' => $radius
+                    'lat'     => $latitude,
+                    'lng'     => $longitude,
+                    'radius'  => $radius,
+                    'lat_min' => $latMin,
+                    'lat_max' => $latMax,
+                    'lon_min' => $lonMin,
+                    'lon_max' => $lonMax
                 ]);
 
                 $nearby = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -346,7 +378,7 @@ $display_fields = [
 
 
 </head>
-<body onload="initMap()">
+<body>
     <div class="container mt-4">
         <h2 class="text-center mb-4">Find Voters Within a Radius</h2>
 
@@ -389,7 +421,8 @@ $display_fields = [
                             </div>
                         <div class="mb-3">
                             <label for="address" class="form-label">Enter Address:</label>
-                            <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : '1726 Grand Ave, Deland, FL 32720'; ?>" required>
+                            <input type="text" class="form-control" name="address" id="address" list="addressCache" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : '1726 Grand Ave, Deland, FL 32720'; ?>" required>
+                            <datalist id="addressCache"></datalist>
                         </div>
 
                         <div class="mb-3">
@@ -415,7 +448,16 @@ $display_fields = [
 <?php if (!empty($voters)): ?>
     <div class="table-container mt-4">
         <h3 class="mb-3">Voters Within <?php echo $radius; ?> Miles of <?php echo htmlspecialchars($address); ?></h3>
-        <button onclick="window.print();" class="btn btn-primary d-inline-block mb-3">Print Page</button>
+        <div class="d-flex justify-content-between mb-3">
+            <button onclick="window.print();" class="btn btn-primary">Print Page</button>
+            <div>
+                <label for="sortOption" class="me-2">Sort by:</label>
+                <select id="sortOption" class="form-select d-inline-block w-auto">
+                    <option value="path">Optimal Route</option>
+                    <option value="street">Street</option>
+                </select>
+            </div>
+        </div>
 
         <table class="table table-striped table-bordered">
             <thead class="table-dark">
@@ -432,7 +474,7 @@ $display_fields = [
             </thead>
             <tbody>
                 <?php foreach ($voters as $voter): ?>
-                    <tr>
+                    <tr data-voter-id="<?= htmlspecialchars($voter['VoterID'] ?? '') ?>">
                         <td><?= htmlspecialchars($voter['VoterID'] ?? '') ?></td>
                         <td><?= htmlspecialchars(($voter['Last_Name'] ?? '') . ', ' . ($voter['First_Name'] ?? '')) ?></td>
                         <td><?= nl2br(htmlspecialchars($voter['Voter_Address'] ?? '')) ?></td>
@@ -473,37 +515,150 @@ $display_fields = [
 <?php endif; ?>
     <!-- Bootstrap JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    const lat = <?php echo $latitude ?? 29.0283; ?>;
-    const lon = <?php echo $longitude ?? -81.3031; ?>;
-    const radiusInMeters = <?php echo isset($radius) ? $radius * 1609.34 : 1609.34; ?>;
+    <script>
+    const voters = <?php echo json_encode($voters); ?>;
 
-    const map = L.map('map').setView([lat, lon], 14);
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const toRad = deg => deg * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) ** 2 +
+                  Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                  Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
 
-    // Add OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    function computeOptimalRoute(points) {
+        if (!points || points.length === 0) return [];
+        const n = points.length;
+        const dist = Array.from({ length: n }, () => Array(n).fill(0));
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                const d = haversineDistance(points[i].Latitude, points[i].Longitude,
+                                           points[j].Latitude, points[j].Longitude);
+                dist[i][j] = dist[j][i] = d;
+            }
+        }
 
-    // Search marker
-    const searchMarker = L.marker([lat, lon]).addTo(map).bindPopup("Search Address").openPopup();
+        const route = [0];
+        const visited = new Array(n).fill(false);
+        visited[0] = true;
+        for (let i = 1; i < n; i++) {
+            const last = route[route.length - 1];
+            let nearest = -1;
+            for (let j = 0; j < n; j++) {
+                if (!visited[j] && (nearest === -1 || dist[last][j] < dist[last][nearest])) {
+                    nearest = j;
+                }
+            }
+            route.push(nearest);
+            visited[nearest] = true;
+        }
 
-    // Radius circle
-    L.circle([lat, lon], {
-        radius: radiusInMeters,
-        color: 'red',
-        fillOpacity: 0.2
-    }).addTo(map);
+        let improved = true;
+        while (improved) {
+            improved = false;
+            for (let i = 1; i < n - 1; i++) {
+                for (let k = i + 1; k < n; k++) {
+                    const a = route[i - 1], b = route[i], c = route[k - 1], d = route[k];
+                    const current = dist[a][b] + dist[c][d];
+                    const swapped = dist[a][c] + dist[b][d];
+                    if (swapped < current) {
+                        route.splice(i, k - i, ...route.slice(i, k).reverse());
+                        improved = true;
+                    }
+                }
+            }
+        }
+        return route.map(idx => points[idx]);
+    }
 
-    // Add voter markers
-    <?php foreach ($voters as $voter): ?>
-        L.marker([<?php echo $voter['Latitude']; ?>, <?php echo $voter['Longitude']; ?>])
-          .addTo(map)
-          .bindPopup(`<?php echo addslashes($voter['Voter_Name'] . "<br>" . $voter['Voter_Address']); ?>`);
-    <?php endforeach; ?>
-});
-</script>
+    function sortByStreet(points) {
+        return points.slice().sort((a, b) => {
+            const addrA = (a.Voter_Address || '').split('\n')[0];
+            const addrB = (b.Voter_Address || '').split('\n')[0];
+            const streetA = addrA.replace(/^\d+\s*/, '').toLowerCase();
+            const streetB = addrB.replace(/^\d+\s*/, '').toLowerCase();
+            if (streetA !== streetB) return streetA.localeCompare(streetB);
+            const numA = parseInt(addrA) || 0;
+            const numB = parseInt(addrB) || 0;
+            return numA - numB;
+        });
+    }
+    </script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const lat = <?php echo $latitude ?? 29.0283; ?>;
+        const lon = <?php echo $longitude ?? -81.3031; ?>;
+        const radiusInMeters = <?php echo isset($radius) ? $radius * 1609.34 : 1609.34; ?>;
+
+        const map = L.map('map').setView([lat, lon], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        L.marker([lat, lon]).addTo(map).bindPopup("Search Address").openPopup();
+        L.circle([lat, lon], {
+            radius: radiusInMeters,
+            color: 'red',
+            fillOpacity: 0.2
+        }).addTo(map);
+
+        const optimized = computeOptimalRoute(voters);
+        const streetSorted = sortByStreet(voters);
+        const markerLayer = L.layerGroup().addTo(map);
+        let routeLine = null;
+
+        function render(list) {
+            const tbody = document.querySelector('table tbody');
+            if (tbody) {
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const rowMap = {};
+                rows.forEach(r => rowMap[r.dataset.voterId] = r);
+                tbody.innerHTML = '';
+                list.forEach(v => {
+                    const row = rowMap[v.VoterID];
+                    if (row) tbody.appendChild(row);
+                });
+            }
+
+            markerLayer.clearLayers();
+            if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+            const path = [];
+            list.forEach(v => {
+                path.push([v.Latitude, v.Longitude]);
+                markerLayer.addLayer(
+                    L.marker([v.Latitude, v.Longitude]).bindPopup(`${v.Voter_Name}<br>${v.Voter_Address}`)
+                );
+            });
+            if (path.length) {
+                routeLine = L.polyline(path, { color: 'blue' }).addTo(map);
+            }
+        }
+
+        const sortSel = document.getElementById('sortOption');
+        if (sortSel) {
+            sortSel.addEventListener('change', function () {
+                render(this.value === 'street' ? streetSorted : optimized);
+            });
+        }
+
+        render(optimized);
+
+        fetch('addresses.json')
+            .then(r => r.json())
+            .then(list => {
+                const dl = document.getElementById('addressCache');
+                list.forEach(addr => {
+                    const opt = document.createElement('option');
+                    opt.value = addr;
+                    dl.appendChild(opt);
+                });
+            })
+            .catch(() => {});
+    });
+    </script>
 <script>
 document.querySelector("form").addEventListener("submit", function () {
     document.getElementById("searchingIndicator").classList.remove("d-none");
