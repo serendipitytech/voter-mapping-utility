@@ -905,6 +905,7 @@ $display_fields = [
         } catch (e) {
             map.setView([lat,lon], 15);
         }
+        const origin = {lat, lon};
         let start = {lat, lon};
         let startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
 
@@ -970,23 +971,23 @@ $display_fields = [
             const setCursor = (v)=>{ map.getContainer().style.cursor = v ? 'crosshair' : ''; };
             function updateStart(latlng){
                 start = {lat: latlng.lat, lon: latlng.lng};
-                if (startMarker) { markerLayer.removeLayer(startMarker); }
+                if (startMarker) { try { map.removeLayer(startMarker); } catch(e){} }
                 startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
                 renderCurrent();
             }
-            map.on('click', (e)=>{ if (!picking) return; picking=false; setCursor(false); updateStart(e.latlng); });
+            map.on('click', (e)=>{ if (!picking) return; picking=false; setCursor(false); try{pickBtn.classList.remove('active');pickBtn.setAttribute('aria-pressed','false');}catch(_){} updateStart(e.latlng); });
 
             function beginPickFlow(){
                 const hideTip = localStorage.getItem('hideStartTip') === '1';
-                if (hideTip) { picking=true; setCursor(true); return; }
+                if (hideTip) { picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true'); return; }
                 const modalEl = document.getElementById('startTipModal');
-                if (!modalEl) { picking=true; setCursor(true); return; }
+                if (!modalEl) { picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true'); return; }
                 const modal = new bootstrap.Modal(modalEl);
                 const confirmBtn = modalEl.querySelector('#startTipConfirm');
                 const chk = modalEl.querySelector('#startTipDontShow');
                 const onConfirm = ()=>{
                     if (chk && chk.checked) localStorage.setItem('hideStartTip','1');
-                    modal.hide(); picking=true; setCursor(true);
+                    modal.hide(); picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true');
                     confirmBtn.removeEventListener('click', onConfirm);
                 };
                 confirmBtn.addEventListener('click', onConfirm);
@@ -1004,7 +1005,10 @@ $display_fields = [
                 list.forEach(v=>{const row=rowMap[v.VoterID]; if(row)tbody.appendChild(row);});
             }
             markerLayer.clearLayers(); if(routeLine){map.removeLayer(routeLine); routeLine=null;}
-            const path=[]; list.forEach((v,idx)=>{path.push([v.Latitude,v.Longitude]);
+            const path=[];
+            const hasCustomStart = Math.abs(start.lat - origin.lat) > 1e-6 || Math.abs(start.lon - origin.lon) > 1e-6;
+            if (hasCustomStart) { path.push([start.lat, start.lon]); }
+            list.forEach((v,idx)=>{path.push([v.Latitude,v.Longitude]);
                 const cm = L.circleMarker([v.Latitude,v.Longitude],{radius:6,weight:2,color:'#333',fillColor:partyColor(v.Party),fillOpacity:0.9});
                 cm.bindPopup(`${idx+1}. ${v.Voter_Name}<br>${v.Voter_Address}`);
                 markerLayer.addLayer(cm);
@@ -1014,8 +1018,14 @@ $display_fields = [
         function renderCurrent(){
             const sortSel=document.getElementById('sortOption');
             const useStreet = sortSel && sortSel.value==='street';
-            const route = useStreet ? streetSorted : computeRouteFromOrigin(voters, start.lat, start.lon);
-            render(route);
+            const hasCustomStart = Math.abs(start.lat - origin.lat) > 1e-6 || Math.abs(start.lon - origin.lon) > 1e-6;
+            let routeList;
+            if (useStreet) {
+                routeList = streetSorted;
+            } else {
+                routeList = hasCustomStart ? computeRouteFromOrigin(voters, start.lat, start.lon) : optimized;
+            }
+            render(routeList);
         }
         const sortSel=document.getElementById('sortOption');
         if(sortSel){sortSel.addEventListener('change',()=>{renderCurrent();});}
