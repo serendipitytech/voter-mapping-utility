@@ -685,7 +685,7 @@ $display_fields = [
                             <div class="mb-3">
                                 <label for="address" class="form-label">Enter Address:</label>
                                 <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : ''; ?>" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC 20500" required>
-                                <div class="form-text">Include street number and name, city, state, and ZIP (recommended) for best Census geocoding results.</div>
+                                <div class="form-text">Include street number and name, city, state, and ZIP for best results.</div>
                             </div>
 
                             <div class="mb-3">
@@ -757,7 +757,14 @@ $display_fields = [
                     </tbody>
                 </table>
             </div>
-        <?php endif; ?>
+<?php elseif ($_SERVER["REQUEST_METHOD"] === "POST" && empty($error)): ?>
+            <div class="alert alert-warning mt-4">
+                No voters found within <?php echo htmlspecialchars((string)$radius); ?> miles of
+                "<?php echo htmlspecialchars($address); ?>" for county <?php echo htmlspecialchars($county); ?><?php echo ($party && $party !== 'ALL') ? ", party $party" : ''; ?>.
+                <br>
+                Tip: ensure the address is within the selected Florida county, and try a slightly larger radius.
+            </div>
+<?php endif; ?>
     </div>
     <?php if (!empty($debug_log)): ?>
     <div class="container mt-4">
