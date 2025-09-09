@@ -908,6 +908,17 @@ $display_fields = [
         const origin = {lat, lon};
         let start = {lat, lon};
         let startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
+        // Shared picking state and helpers
+        let picking = false;
+        let pickBtnRef = null;
+        const setCursor = (v)=>{ map.getContainer().style.cursor = v ? 'crosshair' : ''; };
+        function deactivatePicking(){ picking=false; setCursor(false); if (pickBtnRef){ pickBtnRef.classList.remove('active'); pickBtnRef.setAttribute('aria-pressed','false'); } }
+        function updateStart(latlng){
+            start = {lat: latlng.lat, lon: latlng.lng};
+            if (startMarker) { try { map.removeLayer(startMarker); } catch(e){} }
+            startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
+            renderCurrent();
+        }
 
         const optimized=computeOptimalRoute(voters), streetSorted=sortByStreet(voters);
         const markerLayer=L.layerGroup().addTo(map); let routeLine=null;
@@ -967,15 +978,8 @@ $display_fields = [
             group.appendChild(resetBtn);
             sel.parentElement.appendChild(toolbar);
 
-            let picking=false;
-            const setCursor = (v)=>{ map.getContainer().style.cursor = v ? 'crosshair' : ''; };
-            function updateStart(latlng){
-                start = {lat: latlng.lat, lon: latlng.lng};
-                if (startMarker) { try { map.removeLayer(startMarker); } catch(e){} }
-                startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
-                renderCurrent();
-            }
-            map.on('click', (e)=>{ if (!picking) return; picking=false; setCursor(false); try{pickBtn.classList.remove('active');pickBtn.setAttribute('aria-pressed','false');}catch(_){} updateStart(e.latlng); });
+            pickBtnRef = pickBtn;
+            map.on('click', (e)=>{ if (!picking) return; deactivatePicking(); updateStart(e.latlng); });
 
             function beginPickFlow(){
                 const hideTip = localStorage.getItem('hideStartTip') === '1';
@@ -1010,7 +1014,15 @@ $display_fields = [
             if (hasCustomStart) { path.push([start.lat, start.lon]); }
             list.forEach((v,idx)=>{path.push([v.Latitude,v.Longitude]);
                 const cm = L.circleMarker([v.Latitude,v.Longitude],{radius:6,weight:2,color:'#333',fillColor:partyColor(v.Party),fillOpacity:0.9});
-                cm.bindPopup(`${idx+1}. ${v.Voter_Name}<br>${v.Voter_Address}`);
+                const btnId = `setStart_${v.VoterID}`;
+                cm.bindPopup(`${idx+1}. ${v.Voter_Name}<br>${v.Voter_Address}<br><button type="button" class="btn btn-sm btn-outline-success mt-1" id="${btnId}">Set as start</button>`);
+                cm.on('popupopen', ()=>{
+                    const b = document.getElementById(btnId);
+                    if (b) b.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); updateStart({lat: v.Latitude, lng: v.Longitude}); cm.closePopup(); });
+                });
+                cm.on('click', (e)=>{
+                    if (picking) { L.DomEvent.stop(e); deactivatePicking(); updateStart(e.latlng); }
+                });
                 markerLayer.addLayer(cm);
             });
             if(path.length && routeToggle && routeToggle.checked) routeLine=L.polyline(path,{color:'#1565c0',weight:3,opacity:0.8}).addTo(map);
