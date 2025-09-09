@@ -141,14 +141,126 @@ function haversine_distance($lat1, $lon1, $lat2, $lon2) {
     return $earthRadius * $c;
 }
 
+// === GeoIP helpers ===
+function is_public_ip($ip) {
+    return (bool) filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+}
+
+function get_client_ip() {
+    $keys = [
+        'HTTP_CF_CONNECTING_IP', // Cloudflare
+        'HTTP_X_FORWARDED_FOR',
+        'HTTP_X_REAL_IP',
+        'HTTP_CLIENT_IP',
+        'REMOTE_ADDR',
+    ];
+    foreach ($keys as $k) {
+        if (!empty($_SERVER[$k])) {
+            $ips = explode(',', $_SERVER[$k]);
+            $ip = trim($ips[0]);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+        }
+    }
+    return null;
+}
+
+function http_get_json($url, $timeout = 1.5) {
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => $timeout,
+            'ignore_errors' => true,
+            'header' => "User-Agent: voter-mapping-utility\r\n",
+        ]
+    ]);
+    $resp = @file_get_contents($url, false, $ctx);
+    if ($resp === false) return null;
+    $data = json_decode($resp, true);
+    return is_array($data) ? $data : null;
+}
+
+function map_county_name_to_code($name) {
+    // Map FL county names to 3-letter codes used by VAT
+    static $map = null;
+    if ($map === null) {
+        $pairs = [
+            'ALACHUA' => 'ALA','BAKER' => 'BAK','BAY' => 'BAY','BRADFORD' => 'BRA','BREVARD' => 'BRE','BROWARD' => 'BRO','CALHOUN' => 'CAL','CHARLOTTE' => 'CHA','CITRUS' => 'CIT','CLAY' => 'CLA','COLLIER' => 'CLL','COLUMBIA' => 'CLM','MIAMI-DADE' => 'DAD','DESOTO' => 'DES','DIXIE' => 'DIX','DUVAL' => 'DUV','ESCAMBIA' => 'ESC','FLAGLER' => 'FLA','FRANKLIN' => 'FRA','GADSDEN' => 'GAD','GILCHRIST' => 'GIL','GLADES' => 'GLA','GULF' => 'GUL','HAMILTON' => 'HAM','HARDEE' => 'HAR','HENDRY' => 'HEN','HERNANDO' => 'HER','HIGHLANDS' => 'HIG','HILLSBOROUGH' => 'HIL','HOLMES' => 'HOL','INDIAN RIVER' => 'IND','JACKSON' => 'JAC','JEFFERSON' => 'JEF','LAFAYETTE' => 'LAF','LAKE' => 'LAK','LEE' => 'LEE','LEON' => 'LEO','LEVY' => 'LEV','LIBERTY' => 'LIB','MADISON' => 'MAD','MANATEE' => 'MAN','MARION' => 'MRN','MARTIN' => 'MRT','MONROE' => 'MON','NASSAU' => 'NAS','OKALOOSA' => 'OKA','OKEECHOBEE' => 'OKE','ORANGE' => 'ORA','OSCEOLA' => 'OSC','PALM BEACH' => 'PAL','PASCO' => 'PAS','PINELLAS' => 'PIN','POLK' => 'POL','PUTNAM' => 'PUT','SANTA ROSA' => 'SAN','SARASOTA' => 'SAR','SEMINOLE' => 'SEM','ST. JOHNS' => 'STJ','ST. LUCIE' => 'STL','SUMTER' => 'SUM','SUWANNEE' => 'SUW','TAYLOR' => 'TAY','UNION' => 'UNI','VOLUSIA' => 'VOL','WAKULLA' => 'WAK','WALTON' => 'WAL','WASHINGTON' => 'WAS'
+        ];
+        $map = [];
+        foreach ($pairs as $label => $code) {
+            $map[$label] = $code;
+            $map[$label . ' COUNTY'] = $code; // FCC returns with " County"
+        }
+    }
+    $key = strtoupper(trim($name));
+    return $map[$key] ?? null;
+}
+
+function geoip_detect(&$geo_lat, &$geo_lon, &$geo_county_code) {
+    $enabled = ($_ENV['GEOIP_ENABLED'] ?? '1') !== '0';
+    if (!$enabled) return;
+    $ip = get_client_ip();
+    if (!$ip) return;
+    // 1) Rough lat/lon via ip-api.com
+    // Use public IPs only; skip private ranges (common in local Docker)
+    if (!is_public_ip($ip)) return;
+    $j = http_get_json('http://ip-api.com/json/' . urlencode($ip) . '?fields=status,lat,lon,country,region,city');
+    if (is_array($j) && ($j['status'] ?? '') === 'success') {
+        $geo_lat = $j['lat'] ?? $geo_lat;
+        $geo_lon = $j['lon'] ?? $geo_lon;
+        // 2) County via FCC API using lat/lon
+        if ($geo_lat && $geo_lon) {
+            $fcc = http_get_json('https://geo.fcc.gov/api/census/area?format=json&lat=' . urlencode((string)$geo_lat) . '&lon=' . urlencode((string)$geo_lon));
+            if (is_array($fcc) && !empty($fcc['results'][0]['county_name'])) {
+                $geo_county_code = map_county_name_to_code($fcc['results'][0]['county_name']);
+            }
+        }
+    }
+}
+
 // === Input ===
 $error = '';
 $latitude = null;
 $longitude = null;
 $voters = [];
 
-$counties = ['ALA', 'BRE', 'BRO', 'VOL', 'DAD'];
+$counties = [];
+$available_counties = [];
+try {
+    $tmp_pdo = get_pdo($geo_db);
+    $rs = $tmp_pdo->query("SELECT DISTINCT county FROM geocoded_addresses WHERE county IS NOT NULL AND county <> '' ORDER BY county");
+    $available_counties = $rs ? $rs->fetchAll(PDO::FETCH_COLUMN) : [];
+    if (!empty($available_counties)) { $counties = $available_counties; }
+} catch (Exception $e) {
+    debug_log('County load warning', 'warning', $e->getMessage());
+}
+// Fallback full list if DB does not have county column or no data yet
+if (empty($counties)) {
+    $counties = ['ALA','BAK','BAY','BRA','BRE','BRO','CAL','CHA','CIT','CLA','CLL','CLM','DAD','DES','DIX','DUV','ESC','FLA','FRA','GAD','GIL','GLA','GUL','HAM','HAR','HEN','HER','HIG','HIL','HOL','IND','JAC','JEF','LAF','LAK','LEE','LEO','LEV','LIB','MAD','MAN','MRN','MRT','MON','NAS','OKA','OKE','ORA','OSC','PAL','PAS','PIN','POL','PUT','SAN','SAR','SEM','STJ','STL','SUM','SUW','TAY','UNI','VOL','WAK','WAL','WAS'];
+}
 $parties  = ['ALL', 'DEM', 'REP', 'NPA'];
+
+// Attempt to geolocate user on initial load (GET), to set map default and county
+$geoip_county = null;
+if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+    $g_lat = null; $g_lon = null; $g_code = null;
+    geoip_detect($g_lat, $g_lon, $g_code);
+    if ($g_lat && $g_lon) {
+        $latitude = $latitude ?? $g_lat;
+        $longitude = $longitude ?? $g_lon;
+    }
+    if ($g_code && in_array($g_code, $counties, true)) {
+        $geoip_county = $g_code;
+    }
+    // Fallback to env-configured defaults if GeoIP is unavailable (common on local dev)
+    if (!$geoip_county && !empty($_ENV['DEFAULT_COUNTY']) && in_array($_ENV['DEFAULT_COUNTY'], $counties, true)) {
+        $geoip_county = $_ENV['DEFAULT_COUNTY'];
+    }
+    if ((!isset($latitude) || !isset($longitude)) && !empty($_ENV['DEFAULT_CENTER_LAT']) && !empty($_ENV['DEFAULT_CENTER_LON'])) {
+        $latitude = (float) $_ENV['DEFAULT_CENTER_LAT'];
+        $longitude = (float) $_ENV['DEFAULT_CENTER_LON'];
+    }
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $address = trim($_POST['address'] ?? '');
@@ -578,7 +690,7 @@ $display_fields = [
                 <div class="card">
                     <div class="card-body">
                         <form method="POST" action="">
-                            <?php $selected_county = $_POST['county'] ?? ($counties[0] ?? ''); ?>
+                            <?php $selected_county = $_POST['county'] ?? ($geoip_county ?? ($counties[0] ?? '')); ?>
                             <div class="mb-3">
                                 <label for="county" class="form-label">Select County:</label>
                                 <select class="form-select" name="county" id="county" required>
@@ -603,7 +715,8 @@ $display_fields = [
 
                             <div class="mb-3">
                                 <label for="address" class="form-label">Enter Address:</label>
-                                <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : '1726 Grand Ave, Deland, FL 32720'; ?>" required>
+                                <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : ''; ?>" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC 20500" required>
+                                <div class="form-text">Include street number and name, city, state, and ZIP for best results.</div>
                             </div>
 
                             <div class="mb-3">
@@ -675,7 +788,14 @@ $display_fields = [
                     </tbody>
                 </table>
             </div>
-        <?php endif; ?>
+<?php elseif ($_SERVER["REQUEST_METHOD"] === "POST" && empty($error)): ?>
+            <div class="alert alert-warning mt-4">
+                No voters found within <?php echo htmlspecialchars((string)$radius); ?> miles of
+                "<?php echo htmlspecialchars($address); ?>" for county <?php echo htmlspecialchars($county); ?><?php echo ($party && $party !== 'ALL') ? ", party $party" : ''; ?>.
+                <br>
+                Tip: ensure the address is within the selected Florida county, and try a slightly larger radius.
+            </div>
+<?php endif; ?>
     </div>
     <?php if (!empty($debug_log)): ?>
     <div class="container mt-4">
@@ -727,7 +847,18 @@ $display_fields = [
         const map=L.map('map').setView([lat,lon],14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
         L.marker([lat,lon]).addTo(map).bindPopup("Search Address").openPopup();
-        L.circle([lat,lon],{radius:radiusInMeters,color:'red',fillOpacity:0.2}).addTo(map);
+        const radiusCircle = L.circle([lat,lon],{radius:radiusInMeters,color:'red',fillOpacity:0.2}).addTo(map);
+        // Fit the map view to just outside the radius
+        try {
+            const b = radiusCircle.getBounds();
+            if (b && b.isValid && b.isValid()) {
+                map.fitBounds(b.pad(0.15));
+            } else {
+                map.setView([lat,lon], 15);
+            }
+        } catch (e) {
+            map.setView([lat,lon], 15);
+        }
         const optimized=computeOptimalRoute(voters), streetSorted=sortByStreet(voters);
         const markerLayer=L.layerGroup().addTo(map); let routeLine=null;
         function render(list){
