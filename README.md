@@ -84,6 +84,23 @@ WHERE vm.county = 'VOL' AND vm.exp_date = '2100-12-31' AND mva.id IN (/* address
 
 If cross-DB writes are not allowed, a small CLI script can batch-read from VAT and insert into `cached_voters`; ask if you want this added.
 
+### CLI: Warm the Cache
+
+Run a CLI helper to pre-populate `cached_voters` for a county and a set of addresses.
+
+- Usage:
+  - By address ids: `php bin/warm_cache.php --county=VOL --address-ids=7544950,7545422 --party=ALL`
+  - From file: `php bin/warm_cache.php --county=VOL --address-id-file=ids.txt`
+  - From bounding box: `php bin/warm_cache.php --county=VOL --bbox=28.93,-81.24,28.95,-81.22`
+  - From address + radius(mi): `php bin/warm_cache.php --county=VOL --from-address="1397 Winterville Street Deltona FL 32725" --radius=0.1`
+  - Common flags: `--strategy=vm_in|in|derived` (default vm_in), `--chunk-size=200`, `--respect-ttl=1` (only fetch misses), `--dry-run=1`
+
+- Notes:
+  - Uses the same DB connections as the app (from `.env`).
+  - County is required and should match VAT partitions (e.g., VOL).
+  - With `--respect-ttl`, it skips ids already fresh per `CACHE_TTL_DAYS`.
+  - Without it, it refreshes the cache for all provided ids.
+
 
 
 ---
