@@ -36,6 +36,9 @@ $vat_db = [
     'password' => $_ENV['VAT_DB_PASS'] ?? 'secret'
 ];
 
+// Cache TTL (days); override via .env CACHE_TTL_DAYS=7
+$cache_ttl_days = intval($_ENV['CACHE_TTL_DAYS'] ?? 30);
+
 if ($debug) {
     debug_log('DB Config (hosts)', 'info', [
         'geo' => [
@@ -233,6 +236,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             birth_date DATE NULL,
                             party CHAR(10) NULL,
                             voter_address TEXT NULL,
+                            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                             PRIMARY KEY (county, address_id, voter_id),
                             INDEX idx_addr (address_id),
                             INDEX idx_party (party)
@@ -241,45 +245,50 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         debug_log('Cache table error', 'warning', $e->getMessage());
                     }
 
-                    // Load any cached voters for these addresses
+                    // Load any cached voters for these addresses (respect TTL)
                     $voters = [];
                     $cached_address_ids = [];
-                    $cachePlace = implode(',', array_fill(0, count($address_ids), '?'));
-                    $cacheWhere = "county = ? AND address_id IN ($cachePlace)";
-                    $cacheParams = array_merge([$county], $address_ids);
-                    if ($party !== 'ALL') {
-                        $cacheWhere .= " AND party = ?";
-                        $cacheParams[] = $party;
-                    }
-                    $cacheSql = "
-                        SELECT
-                            voter_id   AS VoterID,
-                            voter_address AS Voter_Address,
-                            voter_name AS Voter_Name,
-                            last_name  AS Last_Name,
-                            first_name AS First_Name,
-                            email_address AS Email_Address,
-                            birth_date AS Birthday,
-                            phone_number AS Phone_Number,
-                            party AS Party,
-                            address_id
-                        FROM cached_voters
-                        WHERE $cacheWhere
-                    ";
-                    try {
-                        $cstmt = $geo_pdo->prepare($cacheSql);
-                        $cstmt->execute($cacheParams);
-                        $cachedRows = $cstmt->fetchAll(PDO::FETCH_ASSOC);
-                        foreach ($cachedRows as $cr) {
-                            $voters[] = $cr;
-                            $cached_address_ids[$cr['address_id']] = true;
+                    $useCache = empty($_GET['refresh']);
+                    if ($useCache) {
+                        $cachePlace = implode(',', array_fill(0, count($address_ids), '?'));
+                        $cacheWhere = "county = ? AND address_id IN ($cachePlace) AND updated_at >= (NOW() - INTERVAL ? DAY)";
+                        $cacheParams = array_merge([$county], $address_ids, [$cache_ttl_days]);
+                        if ($party !== 'ALL') {
+                            $cacheWhere .= " AND party = ?";
+                            $cacheParams[] = $party;
                         }
-                    } catch (Exception $e) {
-                        debug_log('Cache read error', 'warning', $e->getMessage());
+                        $cacheSql = "
+                            SELECT
+                                voter_id   AS VoterID,
+                                voter_address AS Voter_Address,
+                                voter_name AS Voter_Name,
+                                last_name  AS Last_Name,
+                                first_name AS First_Name,
+                                email_address AS Email_Address,
+                                birth_date AS Birthday,
+                                phone_number AS Phone_Number,
+                                party AS Party,
+                                address_id
+                            FROM cached_voters
+                            WHERE $cacheWhere
+                        ";
+                        try {
+                            $cstmt = $geo_pdo->prepare($cacheSql);
+                            $cstmt->execute($cacheParams);
+                            $cachedRows = $cstmt->fetchAll(PDO::FETCH_ASSOC);
+                            foreach ($cachedRows as $cr) {
+                                $voters[] = $cr;
+                                $cached_address_ids[$cr['address_id']] = true;
+                            }
+                        } catch (Exception $e) {
+                            debug_log('Cache read error', 'warning', $e->getMessage());
+                        }
                     }
 
                     // Determine which address_ids are missing from cache
-                    $missing_ids = array_values(array_diff($address_ids, array_keys($cached_address_ids)));
+                    $missing_ids = $useCache
+                        ? array_values(array_diff($address_ids, array_keys($cached_address_ids)))
+                        : $address_ids;
                     debug_log('Cache status', 'info', [
                         'cached_rows' => isset($cachedRows) ? count($cachedRows) : 0,
                         'missing_ids' => count($missing_ids)
