@@ -36,12 +36,27 @@ $vat_db = [
     'password' => $_ENV['VAT_DB_PASS'] ?? 'secret'
 ];
 
+if ($debug) {
+    debug_log('DB Config (hosts)', 'info', [
+        'geo' => [
+            'host' => $geo_db['host'], 'port' => $geo_db['port'], 'db' => $geo_db['dbname'], 'user' => $geo_db['username']
+        ],
+        'vat' => [
+            'host' => $vat_db['host'], 'port' => $vat_db['port'], 'db' => $vat_db['dbname'], 'user' => $vat_db['username']
+        ]
+    ]);
+}
+
 // === Helpers ===
 function get_pdo($config) {
-    $dsn = 'mysql:host=' . $config['host'] . ';port=' . $config['port'] . ';dbname=' . $config['dbname'];
-    $pdo = new PDO($dsn, $config['username'], $config['password']);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    return $pdo;
+    $dsn = 'mysql:host=' . $config['host'] . ';port=' . $config['port'] . ';dbname=' . $config['dbname'] . ';charset=utf8mb4';
+    $options = [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_PERSISTENT         => true,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+    ];
+    return new PDO($dsn, $config['username'], $config['password'], $options);
 }
 
 function sort_voters_by_address(&$voters) {
@@ -75,14 +90,17 @@ function census_geocode($address) {
         'benchmark' => 'Public_AR_Current',
         'format' => 'json'
     ]);
+    $t0 = microtime(true);
     $response = file_get_contents("$url?$params");
     $data = json_decode($response, true);
     if (!empty($data['result']['addressMatches'])) {
         $coords = $data['result']['addressMatches'][0]['coordinates'];
         $cache[$address] = [$coords['y'], $coords['x']];
         file_put_contents($cacheFile, json_encode($cache));
+        debug_log('Geocode time', 'secondary', sprintf('%.2f ms', (microtime(true) - $t0) * 1000));
         return $cache[$address];
     }
+    debug_log('Geocode time (no match)', 'warning', sprintf('%.2f ms', (microtime(true) - $t0) * 1000));
     return [null, null];
 }
 
@@ -144,57 +162,166 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } elseif (!in_array($party, $parties)) {
         $error = "Invalid party.";
     } else {
+        $t_all = microtime(true);
         list($latitude, $longitude) = census_geocode($address);
         debug_log('Geocoding', 'info', "Address: $address, Latitude: $latitude, Longitude: $longitude");
         if ($latitude && $longitude) {
-            try {
                 $geo_pdo = get_pdo($geo_db);
 
-                $latDelta = $radius / 69.0;
-                $lonDelta = $radius / (cos(deg2rad($latitude)) * 69.0);
+                // Compute bounding box in degrees for an MBR prefilter
+                $latDelta = $radius / 69.0; // ~69 miles per degree latitude
+                $lonDelta = $radius / (max(cos(deg2rad($latitude)), 0.000001) * 69.0);
                 $latMin = $latitude - $latDelta;
                 $latMax = $latitude + $latDelta;
                 $lonMin = $longitude - $lonDelta;
                 $lonMax = $longitude + $lonDelta;
 
+                // Use spatial index on `location` with MBRContains for fast prefilter,
+                // then refine using precise spherical distance (miles)
+                $bboxWkt = sprintf(
+                    'POLYGON((%F %F, %F %F, %F %F, %F %F, %F %F))',
+                    $lonMin, $latMin,
+                    $lonMax, $latMin,
+                    $lonMax, $latMax,
+                    $lonMin, $latMax,
+                    $lonMin, $latMin
+                );
+
                 $raw_sql = "
                     SELECT address_id, lat, lon, full_address
                     FROM geocoded_addresses
-                    WHERE lat BETWEEN :lat_min AND :lat_max
-                      AND lon BETWEEN :lon_min AND :lon_max
+                    WHERE MBRContains(ST_GeomFromText(:bbox_wkt), location)
                       AND (ST_Distance_Sphere(point(lon, lat), point(:lng, :lat)) / 1609.34) <= :radius
                 ";
-
+                $geo_params = [
+                    'lat'      => $latitude,
+                    'lng'      => $longitude,
+                    'radius'   => $radius,
+                    'bbox_wkt' => $bboxWkt,
+                ];
+                if ($debug) {
+                    $dbg_sql = $raw_sql;
+                    foreach ($geo_params as $k => $v) {
+                        $dbg_sql = str_replace(':' . $k, is_numeric($v) ? (string)$v : "'" . $v . "'", $dbg_sql);
+                    }
+                    debug_log('Geo SQL', 'secondary', $dbg_sql);
+                }
+                $t_geo_q = microtime(true);
                 $stmt = $geo_pdo->prepare($raw_sql);
-                $stmt->execute([
-                    'lat'     => $latitude,
-                    'lng'     => $longitude,
-                    'radius'  => $radius,
-                    'lat_min' => $latMin,
-                    'lat_max' => $latMax,
-                    'lon_min' => $lonMin,
-                    'lon_max' => $lonMax
-                ]);
+                $stmt->execute($geo_params);
 
                 $nearby = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 $address_ids = array_column($nearby, 'address_id');
+                debug_log('Geo query timing', 'info', [
+                    'rows' => count($nearby),
+                    'duration_ms' => round((microtime(true) - $t_geo_q) * 1000, 2),
+                    'bbox' => ['latMin' => $latMin, 'latMax' => $latMax, 'lonMin' => $lonMin, 'lonMax' => $lonMax]
+                ]);
 
                 if (!empty($address_ids)) {
-                    $placeholders = implode(',', array_fill(0, count($address_ids), '?'));
-                    $where = "vm.county = ? AND vm.exp_date = '2100-12-31'";
-                    $params = [$county];
-
-                    if ($party !== 'ALL') {
-                        $where .= " AND vm.party = ?";
-                        $params[] = $party;
+                    // Ensure cache table exists
+                    try {
+                        $geo_pdo->exec("CREATE TABLE IF NOT EXISTS cached_voters (
+                            county CHAR(3) NOT NULL,
+                            address_id INT NOT NULL,
+                            voter_id INT NOT NULL,
+                            voter_name VARCHAR(100) NULL,
+                            first_name VARCHAR(50) NULL,
+                            last_name VARCHAR(50) NULL,
+                            email_address VARCHAR(100) NULL,
+                            phone_number VARCHAR(20) NULL,
+                            birth_date DATE NULL,
+                            party CHAR(10) NULL,
+                            voter_address TEXT NULL,
+                            PRIMARY KEY (county, address_id, voter_id),
+                            INDEX idx_addr (address_id),
+                            INDEX idx_party (party)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                    } catch (Exception $e) {
+                        debug_log('Cache table error', 'warning', $e->getMessage());
                     }
 
-                    $where .= " AND mva.id IN ($placeholders)";
-                    $params = array_merge($params, $address_ids);
-
-                    $vat_pdo = get_pdo($vat_db);
-                    $sql = "
+                    // Load any cached voters for these addresses
+                    $voters = [];
+                    $cached_address_ids = [];
+                    $cachePlace = implode(',', array_fill(0, count($address_ids), '?'));
+                    $cacheWhere = "county = ? AND address_id IN ($cachePlace)";
+                    $cacheParams = array_merge([$county], $address_ids);
+                    if ($party !== 'ALL') {
+                        $cacheWhere .= " AND party = ?";
+                        $cacheParams[] = $party;
+                    }
+                    $cacheSql = "
                         SELECT
+                            voter_id   AS VoterID,
+                            voter_address AS Voter_Address,
+                            voter_name AS Voter_Name,
+                            last_name  AS Last_Name,
+                            first_name AS First_Name,
+                            email_address AS Email_Address,
+                            birth_date AS Birthday,
+                            phone_number AS Phone_Number,
+                            party AS Party,
+                            address_id
+                        FROM cached_voters
+                        WHERE $cacheWhere
+                    ";
+                    try {
+                        $cstmt = $geo_pdo->prepare($cacheSql);
+                        $cstmt->execute($cacheParams);
+                        $cachedRows = $cstmt->fetchAll(PDO::FETCH_ASSOC);
+                        foreach ($cachedRows as $cr) {
+                            $voters[] = $cr;
+                            $cached_address_ids[$cr['address_id']] = true;
+                        }
+                    } catch (Exception $e) {
+                        debug_log('Cache read error', 'warning', $e->getMessage());
+                    }
+
+                    // Determine which address_ids are missing from cache
+                    $missing_ids = array_values(array_diff($address_ids, array_keys($cached_address_ids)));
+                    debug_log('Cache status', 'info', [
+                        'cached_rows' => isset($cachedRows) ? count($cachedRows) : 0,
+                        'missing_ids' => count($missing_ids)
+                    ]);
+
+                    // If all results are cached, skip VAT
+                    if (empty($missing_ids)) {
+                        // continue to attach lat/lon below
+                    } else {
+                    $vat_pdo = get_pdo($vat_db);
+                    // Try to discourage hash join which causes full scan of demographics
+                    try { $vat_pdo->exec("SET SESSION optimizer_switch='hash_join=off'"); } catch (Exception $e) { /* ignore */ }
+                    $strategy = isset($_GET['vat_strategy']) ? $_GET['vat_strategy'] : 'vm_in'; // default to fastest observed
+                    $chunkSize = ($debug ? 50 : 200);
+                    $baseWhere = "vm.county = ? AND vm.exp_date = '2100-12-31'";
+                    $baseParams = [$county];
+                    if ($party !== 'ALL') {
+                        $baseWhere .= " AND vm.party = ?";
+                        $baseParams[] = $party;
+                    }
+                    
+                    $sqlBaseDerived = "
+                        SELECT /*+ NO_HASH_JOIN */ STRAIGHT_JOIN
+                            vm.voter_id AS VoterID,
+                            CONCAT_WS(CHAR(10), mva.street_address, TRIM(CONCAT_WS(' ', mva.address_line2, mva.apt_number))) AS Voter_Address,
+                            d.voter_name AS Voter_Name,
+                            d.last_name AS Last_Name,
+                            d.first_name AS First_Name,
+                            d.email_address AS Email_Address,
+                            d.birth_date AS Birthday,
+                            d.phone_number AS Phone_Number,
+                            vm.party AS Party,
+                            mva.id AS address_id
+                        FROM (%s) AS ids
+                        JOIN master_voter_address mva ON mva.id = ids.id
+                        JOIN voter_master vm ON vm.voter_addr_id = mva.id
+                        JOIN demographics d ON d.id = vm.demographics_id AND d.county = vm.county
+                        WHERE %s
+                    ";
+
+                    $sqlBaseIn = "
+                        SELECT /*+ NO_HASH_JOIN */
                             vm.voter_id AS VoterID,
                             CONCAT_WS(CHAR(10), mva.street_address, TRIM(CONCAT_WS(' ', mva.address_line2, mva.apt_number))) AS Voter_Address,
                             d.voter_name AS Voter_Name,
@@ -207,12 +334,176 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             mva.id AS address_id
                         FROM voter_master vm
                         JOIN master_voter_address mva ON vm.voter_addr_id = mva.id
-                        JOIN demographics d ON d.voter_id = vm.voter_id
-                        WHERE $where
+                        JOIN demographics d ON d.id = vm.demographics_id AND d.county = vm.county
+                        WHERE %s AND mva.id IN (%s)
                     ";
-                    $stmt = $vat_pdo->prepare($sql);
-                    $stmt->execute($params);
-                    $voters = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $sqlBaseVmIn = "
+                        SELECT /*+ NO_HASH_JOIN */
+                            vm.voter_id AS VoterID,
+                            CONCAT_WS(CHAR(10), mva.street_address, TRIM(CONCAT_WS(' ', mva.address_line2, mva.apt_number))) AS Voter_Address,
+                            d.voter_name AS Voter_Name,
+                            d.last_name AS Last_Name,
+                            d.first_name AS First_Name,
+                            d.email_address AS Email_Address,
+                            d.birth_date AS Birthday,
+                            d.phone_number AS Phone_Number,
+                            vm.party AS Party,
+                            mva.id AS address_id
+                        FROM voter_master vm
+                        JOIN demographics d ON d.id = vm.demographics_id AND d.county = vm.county
+                        JOIN master_voter_address mva ON vm.voter_addr_id = mva.id
+                        WHERE %s AND vm.voter_addr_id IN (%s)
+                    ";
+
+                    $chunks = array_chunk($missing_ids, $chunkSize);
+                    $t_vat_all = microtime(true);
+                    if ($strategy === 'two_step') {
+                        // Single-step two_step: include demographics via PK join to avoid full scan
+                        foreach ($chunks as $i => $chunk) {
+                            $values = implode(' UNION ALL ', array_fill(0, count($chunk), 'SELECT ? AS id'));
+                            $sql = sprintf(
+                                "SELECT /*+ NO_HASH_JOIN */ STRAIGHT_JOIN
+                                        vm.voter_id AS VoterID,
+                                        CONCAT_WS(CHAR(10), mva.street_address, TRIM(CONCAT_WS(' ', mva.address_line2, mva.apt_number))) AS Voter_Address,
+                                        d.voter_name AS Voter_Name,
+                                        d.last_name AS Last_Name,
+                                        d.first_name AS First_Name,
+                                        d.email_address AS Email_Address,
+                                        d.birth_date AS Birthday,
+                                        d.phone_number AS Phone_Number,
+                                        vm.party AS Party,
+                                        mva.id AS address_id
+                                 FROM (%s) AS ids
+                                 JOIN master_voter_address mva ON mva.id = ids.id
+                                 JOIN voter_master vm ON vm.voter_addr_id = mva.id
+                                 JOIN demographics d ON d.id = vm.demographics_id AND d.county = vm.county
+                                 WHERE %s",
+                                $values,
+                                $baseWhere
+                            );
+                            $params = array_merge($chunk, $baseParams);
+                            $t_chunk = microtime(true);
+                            $stmt = $vat_pdo->prepare($sql);
+                            $stmt->execute($params);
+                            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                            $voters = array_merge($voters, $rows);
+                            if ($debug) {
+                                debug_log('two_step (single) chunk ' . ($i+1), 'info', [
+                                    'ids' => count($chunk),
+                                    'rows' => count($rows),
+                                    'duration_ms' => round((microtime(true) - $t_chunk) * 1000, 2)
+                                ]);
+                            }
+                        }
+                        debug_log('VAT two_step total', 'info', [
+                            'chunks' => count($chunks),
+                            'total_rows' => count($voters),
+                            'duration_ms' => round((microtime(true) - $t_vat_all) * 1000, 2)
+                        ]);
+                    } else {
+                        foreach ($chunks as $i => $chunk) {
+                            if ($strategy === 'derived') {
+                                $values = implode(' UNION ALL ', array_fill(0, count($chunk), 'SELECT ? AS id'));
+                                $sql = sprintf($sqlBaseDerived, $values, $baseWhere);
+                                $params = array_merge($chunk, $baseParams);
+                            } elseif ($strategy === 'vm_in') {
+                                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                                $sql = sprintf($sqlBaseVmIn, $baseWhere, $placeholders);
+                                $params = array_merge($baseParams, $chunk);
+                            } else { // 'in'
+                                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                                $sql = sprintf($sqlBaseIn, $baseWhere, $placeholders);
+                                $params = array_merge($baseParams, $chunk);
+                            }
+
+                        if ($debug) {
+                            $dbg_sql = $sql;
+                            foreach ($params as $v) {
+                                $pos = strpos($dbg_sql, '?');
+                                if ($pos !== false) {
+                                    $rep = is_numeric($v) ? (string)$v : "'" . addslashes($v) . "'";
+                                    $dbg_sql = substr_replace($dbg_sql, $rep, $pos, 1);
+                                }
+                            }
+                            debug_log('VAT SQL (chunk) ' . ($i + 1) . ' [' . $strategy . ']', 'secondary', $dbg_sql);
+
+                            // EXPLAIN plan
+                            try {
+                                $explainStmt = $vat_pdo->prepare('EXPLAIN ' . $sql);
+                                $explainStmt->execute($params);
+                                $plan = $explainStmt->fetchAll(PDO::FETCH_ASSOC);
+                                debug_log('VAT EXPLAIN (chunk) ' . ($i + 1) . ' [' . $strategy . ']', 'info', $plan);
+                            } catch (Exception $e) {
+                                debug_log('VAT EXPLAIN error', 'warning', $e->getMessage());
+                            }
+                        }
+
+                        $stmt = $vat_pdo->prepare($sql);
+                        $t_chunk = microtime(true);
+                        $stmt->execute($params);
+                        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        $voters = array_merge($voters, $rows);
+                        if ($debug) {
+                            debug_log('VAT query chunk', 'info', [
+                                'chunk_index' => $i + 1,
+                                'chunk_size' => count($chunk),
+                                'rows_returned' => count($rows),
+                                'duration_ms' => round((microtime(true) - $t_chunk) * 1000, 2)
+                            ]);
+                        }
+                    }
+                    debug_log('VAT query total', 'info', [
+                        'chunks' => count($chunks),
+                        'total_rows' => count($voters),
+                        'duration_ms' => round((microtime(true) - $t_vat_all) * 1000, 2)
+                    ]);
+
+                    // Refresh cache for the missing addresses: delete then insert
+                    try {
+                        if (!empty($missing_ids)) {
+                            $delPlace = implode(',', array_fill(0, count($missing_ids), '?'));
+                            $delSql = "DELETE FROM cached_voters WHERE county = ? AND address_id IN ($delPlace)";
+                            $dstmt = $geo_pdo->prepare($delSql);
+                            $dstmt->execute(array_merge([$county], $missing_ids));
+
+                            if (!empty($voters)) {
+                                // Insert in batches
+                                $insRows = [];
+                                foreach ($voters as $vr) {
+                                    $insRows[] = [
+                                        $county,
+                                        $vr['address_id'] ?? null,
+                                        $vr['VoterID'] ?? null,
+                                        $vr['Voter_Name'] ?? null,
+                                        $vr['First_Name'] ?? null,
+                                        $vr['Last_Name'] ?? null,
+                                        $vr['Email_Address'] ?? null,
+                                        $vr['Phone_Number'] ?? null,
+                                        isset($vr['Birthday']) && $vr['Birthday'] ? date('Y-m-d', strtotime($vr['Birthday'])) : null,
+                                        $vr['Party'] ?? null,
+                                        $vr['Voter_Address'] ?? null,
+                                    ];
+                                }
+                                $insChunk = 200;
+                                for ($i = 0; $i < count($insRows); $i += $insChunk) {
+                                    $slice = array_slice($insRows, $i, $insChunk);
+                                    $place = implode(',', array_fill(0, count($slice), '(?,?,?,?,?,?,?,?,?,?,?)'));
+                                    $isql = "INSERT INTO cached_voters (
+                                        county, address_id, voter_id, voter_name, first_name, last_name,
+                                        email_address, phone_number, birth_date, party, voter_address
+                                    ) VALUES $place";
+                                    $params = [];
+                                    foreach ($slice as $row) { $params = array_merge($params, $row); }
+                                    $istmt = $geo_pdo->prepare($isql);
+                                    $istmt->execute($params);
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        debug_log('Cache write error', 'warning', $e->getMessage());
+                    }
+                    }
 
                     $latlon_lookup = [];
                     foreach ($nearby as $row) {
@@ -229,9 +520,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     unset($voter);
                     sort_voters_by_distance_and_street($voters, $latitude, $longitude);
                 }
-            } catch (PDOException $e) {
-                $error = "Database error: " . $e->getMessage();
-            }
+                debug_log('Total search time', 'info', sprintf('%.2f ms', (microtime(true) - $t_all) * 1000));
+            
         } else {
             $error = "Geocoding failed: Address not recognized by Census API.";
         }
@@ -248,6 +538,7 @@ $display_fields = [
     'Email_Address' => 'Email',
     'Party'         => 'Party',
 ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -326,7 +617,7 @@ $display_fields = [
             </div>
         </div>
 
-        <?php if (!empty($voters)): ?>
+<?php if (!empty($voters)): ?>
             <div class="table-container mt-4">
                 <div class="d-flex align-items-center mb-2">
                     <h3 class="mb-0">Voters Within <?php echo $radius; ?> Miles of <?php echo htmlspecialchars($address); ?></h3>
@@ -377,6 +668,20 @@ $display_fields = [
             </div>
         <?php endif; ?>
     </div>
+    <?php if (!empty($debug_log)): ?>
+    <div class="container mt-4">
+        <?php foreach ($debug_log as $dbg): ?>
+            <div class="card border-<?= $dbg['variant'] ?> mb-3">
+                <div class="card-header bg-<?= $dbg['variant'] ?> text-white fw-bold">
+                    Debug: <?= htmlspecialchars($dbg['title']) ?>
+                </div>
+                <div class="card-body">
+                    <pre class="mb-0"><?php echo htmlspecialchars(is_string($dbg['content']) ? $dbg['content'] : print_r($dbg['content'], true)); ?></pre>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
     <script>
     const voters = <?php echo json_encode($voters); ?>;
     function haversineDistance(lat1, lon1, lat2, lon2) {
