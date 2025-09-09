@@ -129,6 +129,44 @@ Common recipes
 - Warm by file (Make): `make warm-cache ARGS="--county=VOL --address-id-file=ids.txt"`
 - Warm by address + radius (PHP): `php bin/warm_cache.php --county=VOL --from-address="1397 Winterville Street Deltona FL 32725" --radius=0.1`
 
+### Common Warm Recipes
+
+The cache warmer accepts a set of `address_id`s. Below are practical ways to generate them for different scopes. Use whichever runner you prefer (Composer, Make, or direct PHP) — they all accept the same arguments.
+
+1) Neighborhood or small area
+- From an address and a radius (miles):
+  - `composer warm-cache -- --county=VOL --from-address="1397 Winterville Street Deltona FL 32725" --radius=0.5`
+  - Good for quickly warming around a specific point of interest.
+
+2) City-wide (approximate)
+- Using an approximate bounding box around the city:
+  - `make warm-cache ARGS="--county=VOL --bbox=28.90,-81.30,29.00,-81.20"`
+  - Adjust lat/lon to fit your city. You can also run several overlapping bboxes if the city is irregular.
+- OR using a central address and a larger radius:
+  - `php bin/warm_cache.php --county=VOL --from-address="Deltona City Hall" --radius=5.0`
+
+3) ZIP code
+- If `full_address` contains ZIP codes, you can export `address_id`s using SQL and feed them to the warmer:
+  - Export ids with MySQL (example pattern; adjust to your data):
+    - `mysql -h $GEO_DB_HOST -P $GEO_DB_PORT -u $GEO_DB_USER -p$GEO_DB_PASS $GEO_DB_NAME -N -e "SELECT address_id FROM geocoded_addresses WHERE full_address RLIKE ' 32725$'" > ids.txt`
+  - Warm from the file:
+    - `composer warm-cache -- --county=VOL --address-id-file=ids.txt`
+  - Note: Relying on `full_address` format can be brittle; prefer spatial/boundary-based selection if possible.
+
+4) Whole county (caution: heavy)
+- Recommended only if you truly need it. Generate a file of `address_id`s that fall inside the county boundary, then warm in batches:
+  - If you maintain county polygons elsewhere, precompute the list and save to `ids.txt`.
+  - Warm with respect to TTL (skip fresh rows):
+    - `make warm-cache ARGS="--county=VOL --address-id-file=ids.txt --respect-ttl=1 --chunk-size=500"`
+  - Without TTL (force refresh):
+    - `make warm-cache ARGS="--county=VOL --address-id-file=ids.txt --chunk-size=500"`
+  - Tip: Split very large id files into smaller chunks and run sequentially to reduce load.
+
+General tips
+- Start with smaller areas to validate speed and correctness.
+- Use `--respect-ttl=1` for periodic re-warms (e.g., weekly) so only stale entries are refetched.
+- Increase `--chunk-size` (e.g., 500) if your VAT server handles larger IN lists efficiently; reduce it if latency per query grows.
+
 
 
 ---
