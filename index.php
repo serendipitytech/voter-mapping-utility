@@ -861,6 +861,42 @@ $display_fields = [
         }
         const optimized=computeOptimalRoute(voters), streetSorted=sortByStreet(voters);
         const markerLayer=L.layerGroup().addTo(map); let routeLine=null;
+
+        // Party color map
+        const partyColor = (p)=>{
+            switch((p||'').toUpperCase()){case 'REP': return '#d32f2f'; case 'DEM': return '#1976d2'; case 'NPA': return '#616161'; default: return '#8e8e8e';}
+        };
+
+        // Legend control
+        const legend = L.control({position:'bottomright'});
+        legend.onAdd = function(){
+            const div = L.DomUtil.create('div','card p-2');
+            div.style.fontSize='12px';
+            div.innerHTML = `
+                <div class="fw-bold mb-1">Legend</div>
+                <div><span style="display:inline-block;width:10px;height:10px;background:#1976d2;border-radius:50%;margin-right:6px"></span>Democrat</div>
+                <div><span style="display:inline-block;width:10px;height:10px;background:#d32f2f;border-radius:50%;margin-right:6px"></span>Republican</div>
+                <div><span style="display:inline-block;width:10px;height:10px;background:#616161;border-radius:50%;margin-right:6px"></span>No Party</div>
+            `;
+            return div;
+        };
+        legend.addTo(map);
+        // Controls
+        const routeToggle = (function(){
+            const sel = document.getElementById('sortOption');
+            let cb = document.getElementById('showRoute');
+            if (!cb && sel && sel.parentElement){
+                cb = document.createElement('input');
+                cb.type='checkbox'; cb.id='showRoute'; cb.className='form-check-input ms-3'; cb.checked=true;
+                const lbl = document.createElement('label');
+                lbl.className='form-check-label ms-1'; lbl.setAttribute('for','showRoute'); lbl.textContent='Show route';
+                const wrap = document.createElement('div'); wrap.className='form-check d-flex align-items-center ms-2';
+                wrap.appendChild(cb); wrap.appendChild(lbl);
+                sel.parentElement.appendChild(wrap);
+            }
+            return cb;
+        })();
+
         function render(list){
             const tbody=document.querySelector('table tbody');
             if(tbody){const rows=Array.from(tbody.querySelectorAll('tr')), rowMap={};
@@ -868,13 +904,16 @@ $display_fields = [
                 list.forEach(v=>{const row=rowMap[v.VoterID]; if(row)tbody.appendChild(row);});
             }
             markerLayer.clearLayers(); if(routeLine){map.removeLayer(routeLine); routeLine=null;}
-            const path=[]; list.forEach(v=>{path.push([v.Latitude,v.Longitude]);
-                markerLayer.addLayer(L.marker([v.Latitude,v.Longitude]).bindPopup(`${v.Voter_Name}<br>${v.Voter_Address}`));
+            const path=[]; list.forEach((v,idx)=>{path.push([v.Latitude,v.Longitude]);
+                const cm = L.circleMarker([v.Latitude,v.Longitude],{radius:6,weight:2,color:'#333',fillColor:partyColor(v.Party),fillOpacity:0.9});
+                cm.bindPopup(`${idx+1}. ${v.Voter_Name}<br>${v.Voter_Address}`);
+                markerLayer.addLayer(cm);
             });
-            if(path.length)routeLine=L.polyline(path,{color:'blue'}).addTo(map);
+            if(path.length && routeToggle && routeToggle.checked) routeLine=L.polyline(path,{color:'#1565c0',weight:3,opacity:0.8}).addTo(map);
         }
         const sortSel=document.getElementById('sortOption');
         if(sortSel){sortSel.addEventListener('change',()=>{render(sortSel.value==='street'?streetSorted:optimized);});}
+        if(routeToggle){routeToggle.addEventListener('change',()=>{render((sortSel && sortSel.value==='street')?streetSorted:optimized);});}
         render(optimized);
     });
     </script>
