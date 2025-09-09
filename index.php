@@ -141,6 +141,73 @@ function haversine_distance($lat1, $lon1, $lat2, $lon2) {
     return $earthRadius * $c;
 }
 
+// === GeoIP helpers ===
+function get_client_ip() {
+    $keys = [
+        'HTTP_CF_CONNECTING_IP', // Cloudflare
+        'HTTP_X_FORWARDED_FOR',
+        'HTTP_X_REAL_IP',
+        'HTTP_CLIENT_IP',
+        'REMOTE_ADDR',
+    ];
+    foreach ($keys as $k) {
+        if (!empty($_SERVER[$k])) {
+            $ips = explode(',', $_SERVER[$k]);
+            $ip = trim($ips[0]);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+        }
+    }
+    return null;
+}
+
+function http_get_json($url, $timeout = 1.5) {
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => $timeout,
+            'ignore_errors' => true,
+            'header' => "User-Agent: voter-mapping-utility\r\n",
+        ]
+    ]);
+    $resp = @file_get_contents($url, false, $ctx);
+    if ($resp === false) return null;
+    $data = json_decode($resp, true);
+    return is_array($data) ? $data : null;
+}
+
+function map_county_name_to_code($name) {
+    // Map a few known FL counties to 3-letter codes used by VAT
+    $map = [
+        'ALACHUA COUNTY'   => 'ALA',
+        'BREVARD COUNTY'   => 'BRE',
+        'BROWARD COUNTY'   => 'BRO',
+        'VOLUSIA COUNTY'   => 'VOL',
+        'MIAMI-DADE COUNTY'=> 'DAD',
+    ];
+    $key = strtoupper(trim($name));
+    return $map[$key] ?? null;
+}
+
+function geoip_detect(&$geo_lat, &$geo_lon, &$geo_county_code) {
+    $enabled = ($_ENV['GEOIP_ENABLED'] ?? '1') !== '0';
+    if (!$enabled) return;
+    $ip = get_client_ip();
+    if (!$ip) return;
+    // 1) Rough lat/lon via ip-api.com
+    $j = http_get_json('http://ip-api.com/json/' . urlencode($ip) . '?fields=status,lat,lon,country,region,city');
+    if (is_array($j) && ($j['status'] ?? '') === 'success') {
+        $geo_lat = $j['lat'] ?? $geo_lat;
+        $geo_lon = $j['lon'] ?? $geo_lon;
+        // 2) County via FCC API using lat/lon
+        if ($geo_lat && $geo_lon) {
+            $fcc = http_get_json('https://geo.fcc.gov/api/census/area?format=json&lat=' . urlencode((string)$geo_lat) . '&lon=' . urlencode((string)$geo_lon));
+            if (is_array($fcc) && !empty($fcc['results'][0]['county_name'])) {
+                $geo_county_code = map_county_name_to_code($fcc['results'][0]['county_name']);
+            }
+        }
+    }
+}
+
 // === Input ===
 $error = '';
 $latitude = null;
@@ -149,6 +216,20 @@ $voters = [];
 
 $counties = ['ALA', 'BRE', 'BRO', 'VOL', 'DAD'];
 $parties  = ['ALL', 'DEM', 'REP', 'NPA'];
+
+// Attempt to geolocate user on initial load (GET), to set map default and county
+$geoip_county = null;
+if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+    $g_lat = null; $g_lon = null; $g_code = null;
+    geoip_detect($g_lat, $g_lon, $g_code);
+    if ($g_lat && $g_lon) {
+        $latitude = $latitude ?? $g_lat;
+        $longitude = $longitude ?? $g_lon;
+    }
+    if ($g_code && in_array($g_code, $counties, true)) {
+        $geoip_county = $g_code;
+    }
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $address = trim($_POST['address'] ?? '');
@@ -578,7 +659,7 @@ $display_fields = [
                 <div class="card">
                     <div class="card-body">
                         <form method="POST" action="">
-                            <?php $selected_county = $_POST['county'] ?? ($counties[0] ?? ''); ?>
+                            <?php $selected_county = $_POST['county'] ?? ($geoip_county ?? ($counties[0] ?? '')); ?>
                             <div class="mb-3">
                                 <label for="county" class="form-label">Select County:</label>
                                 <select class="form-select" name="county" id="county" required>
@@ -604,6 +685,7 @@ $display_fields = [
                             <div class="mb-3">
                                 <label for="address" class="form-label">Enter Address:</label>
                                 <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : ''; ?>" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC 20500" required>
+                                <div class="form-text">Include street number and name, city, state, and ZIP (recommended) for best Census geocoding results.</div>
                             </div>
 
                             <div class="mb-3">
