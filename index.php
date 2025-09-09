@@ -142,6 +142,10 @@ function haversine_distance($lat1, $lon1, $lat2, $lon2) {
 }
 
 // === GeoIP helpers ===
+function is_public_ip($ip) {
+    return (bool) filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+}
+
 function get_client_ip() {
     $keys = [
         'HTTP_CF_CONNECTING_IP', // Cloudflare
@@ -198,6 +202,8 @@ function geoip_detect(&$geo_lat, &$geo_lon, &$geo_county_code) {
     $ip = get_client_ip();
     if (!$ip) return;
     // 1) Rough lat/lon via ip-api.com
+    // Use public IPs only; skip private ranges (common in local Docker)
+    if (!is_public_ip($ip)) return;
     $j = http_get_json('http://ip-api.com/json/' . urlencode($ip) . '?fields=status,lat,lon,country,region,city');
     if (is_array($j) && ($j['status'] ?? '') === 'success') {
         $geo_lat = $j['lat'] ?? $geo_lat;
@@ -245,6 +251,14 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     }
     if ($g_code && in_array($g_code, $counties, true)) {
         $geoip_county = $g_code;
+    }
+    // Fallback to env-configured defaults if GeoIP is unavailable (common on local dev)
+    if (!$geoip_county && !empty($_ENV['DEFAULT_COUNTY']) && in_array($_ENV['DEFAULT_COUNTY'], $counties, true)) {
+        $geoip_county = $_ENV['DEFAULT_COUNTY'];
+    }
+    if ((!isset($latitude) || !isset($longitude)) && !empty($_ENV['DEFAULT_CENTER_LAT']) && !empty($_ENV['DEFAULT_CENTER_LON'])) {
+        $latitude = (float) $_ENV['DEFAULT_CENTER_LAT'];
+        $longitude = (float) $_ENV['DEFAULT_CENTER_LON'];
     }
 }
 
