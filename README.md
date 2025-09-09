@@ -101,6 +101,13 @@ Run a CLI helper to pre-populate `cached_voters` for a county and a set of addre
   - With `--respect-ttl`, it skips ids already fresh per `CACHE_TTL_DAYS`.
   - Without it, it refreshes the cache for all provided ids.
 
+You can also run via Composer or Makefile:
+
+- Composer script:
+  - composer warm-cache -- --county=VOL --address-ids=7544950,7545422 --party=ALL
+- Makefile target:
+  - make warm-cache ARGS="--county=VOL --from-address='1397 Winterville Street Deltona FL 32725' --radius=0.1"
+
 
 
 ---

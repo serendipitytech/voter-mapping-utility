@@ -1,5 +1,11 @@
 {
     "require": {
         "vlucas/phpdotenv": "^5.6"
+    },
+    "scripts": {
+        "warm-cache": "@php bin/warm_cache.php"
+    },
+    "scripts-descriptions": {
+        "warm-cache": "Warm geocode_db.cached_voters. Pass args after --, e.g. composer warm-cache -- --county=VOL --address-ids=1,2"
     }
 }
