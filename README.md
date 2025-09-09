@@ -108,6 +108,27 @@ You can also run via Composer or Makefile:
 - Makefile target:
   - make warm-cache ARGS="--county=VOL --from-address='1397 Winterville Street Deltona FL 32725' --radius=0.1"
 
+#### Which Runner Should I Use?
+
+- `bin/warm_cache.php` (the script)
+  - This is the underlying PHP script that does the work. You can always call it directly: `php bin/warm_cache.php ...`.
+  - Use this if you prefer plain PHP commands or are running in environments without Composer or Make.
+
+- Composer alias (`composer warm-cache`)
+  - A convenience alias that invokes the same script via Composer. Pass script arguments after `--`.
+  - Use if you already use Composer and want a memorable command integrated with the project.
+
+- Makefile target (`make warm-cache`)
+  - Another convenience wrapper that forwards `ARGS` to the script. Lets you override which PHP binary to use.
+  - Use if you like `make` workflows or want short commands for common recipes.
+
+Important: You only need one of these. All three run the same underlying logic; they are just different ways to execute the same script.
+
+Common recipes
+- Warm by ids (Composer): `composer warm-cache -- --county=VOL --address-ids=7544950,7545422`
+- Warm by file (Make): `make warm-cache ARGS="--county=VOL --address-id-file=ids.txt"`
+- Warm by address + radius (PHP): `php bin/warm_cache.php --county=VOL --from-address="1397 Winterville Street Deltona FL 32725" --radius=0.1`
+
 
 
 ---
