@@ -36,6 +36,7 @@
 
 - The app caches voter rows by `(county, address_id, voter_id)` and reuses them for later searches.
 - TTL: configurable via `.env` `CACHE_TTL_DAYS` (default 30). Cache reads require `updated_at >= NOW() - INTERVAL CACHE_TTL_DAYS DAY`.
+- Recommended TTL: set `CACHE_TTL_DAYS=45` to align with monthly-but-variable source updates; stale areas quietly refresh on access.
 - Forced refresh: add `?refresh=1` to bypass cache for a single search and refresh cache for those addresses.
 - Party-aware: cache respects party filter (ALL returns all parties; party-specific searches only reuse rows for that party).
 
@@ -86,7 +87,7 @@ If cross-DB writes are not allowed, a small CLI script can batch-read from VAT a
 
 ### CLI: Warm the Cache
 
-Run a CLI helper to pre-populate `cached_voters` for a county and a set of addresses.
+Run a CLI helper to pre-populate `cached_voters` for a county and a set of addresses. This is optional and not required for normal use — the app refreshes stale entries on access based on TTL. Consider warming only if you need near-instant results over large areas.
 
 - Usage:
   - By address ids: `php bin/warm_cache.php --county=VOL --address-ids=7544950,7545422 --party=ALL`
@@ -178,6 +179,9 @@ General tips
 - Start with smaller areas to validate speed and correctness.
 - Use `--respect-ttl=1` for periodic re-warms (e.g., weekly) so only stale entries are refetched.
 - Increase `--chunk-size` (e.g., 500) if your VAT server handles larger IN lists efficiently; reduce it if latency per query grows.
+
+Optional background cadence (future)
+- If needed later, schedule a light monthly warm around the middle of the month using `--respect-ttl=1`, plus a weekly safety sweep. Scope to a few city/ZIP bboxes rather than entire counties to keep load low. With `CACHE_TTL_DAYS=45`, most weeks will be a no-op.
 
 
 
