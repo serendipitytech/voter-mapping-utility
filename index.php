@@ -603,7 +603,7 @@ $display_fields = [
 
                             <div class="mb-3">
                                 <label for="address" class="form-label">Enter Address:</label>
-                                <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : '1726 Grand Ave, Deland, FL 32720'; ?>" required>
+                                <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : ''; ?>" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC 20500" required>
                             </div>
 
                             <div class="mb-3">
@@ -727,7 +727,18 @@ $display_fields = [
         const map=L.map('map').setView([lat,lon],14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
         L.marker([lat,lon]).addTo(map).bindPopup("Search Address").openPopup();
-        L.circle([lat,lon],{radius:radiusInMeters,color:'red',fillOpacity:0.2}).addTo(map);
+        const radiusCircle = L.circle([lat,lon],{radius:radiusInMeters,color:'red',fillOpacity:0.2}).addTo(map);
+        // Fit the map view to just outside the radius
+        try {
+            const b = radiusCircle.getBounds();
+            if (b && b.isValid && b.isValid()) {
+                map.fitBounds(b.pad(0.15));
+            } else {
+                map.setView([lat,lon], 15);
+            }
+        } catch (e) {
+            map.setView([lat,lon], 15);
+        }
         const optimized=computeOptimalRoute(voters), streetSorted=sortByStreet(voters);
         const markerLayer=L.layerGroup().addTo(map); let routeLine=null;
         function render(list){
