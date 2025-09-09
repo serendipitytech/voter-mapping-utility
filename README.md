@@ -124,6 +124,18 @@ You can also run via Composer or Makefile:
 
 Important: You only need one of these. All three run the same underlying logic; they are just different ways to execute the same script.
 
+CLI options (summary)
+- `--county=XXX` (required): 3-letter county code matching VAT partitions (e.g., VOL).
+- `--party=ALL|DEM|REP|NPA` (optional): filter party; default ALL.
+- `--address-ids=1,2,3` (optional): comma-separated address_id list.
+- `--address-id-file=ids.txt` (optional): file with one address_id per line.
+- `--bbox=latMin,lonMin,latMax,lonMax` (optional): select addresses in a bounding box.
+- `--from-address="..." --radius=0.1` (optional): geocode a point then select addresses within radius (miles).
+- `--chunk-size=200` (optional): size of IN list batches to VAT; default 200.
+- `--strategy=vm_in|in|derived` (optional): VAT strategy; default vm_in.
+- `--respect-ttl=1` (optional): only fetch cache misses fresher than `CACHE_TTL_DAYS`.
+- `--dry-run=1` (optional): do not write cache (for timing/testing).
+
 Common recipes
 - Warm by ids (Composer): `composer warm-cache -- --county=VOL --address-ids=7544950,7545422`
 - Warm by file (Make): `make warm-cache ARGS="--county=VOL --address-id-file=ids.txt"`
