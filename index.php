@@ -256,6 +256,7 @@ $display_fields = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Find Voters Within Radius</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
@@ -271,7 +272,110 @@ $display_fields = [
 <body>
     <div class="container mt-4">
         <h2 class="text-center mb-4">Find Voters Within a Radius</h2>
-        <!-- form and table markup here -->
+
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <form method="POST" action="">
+                            <?php $selected_county = $_POST['county'] ?? ($counties[0] ?? ''); ?>
+                            <div class="mb-3">
+                                <label for="county" class="form-label">Select County:</label>
+                                <select class="form-select" name="county" id="county" required>
+                                    <?php foreach ($counties as $code): ?>
+                                        <option value="<?= $code ?>" <?= $code === $selected_county ? 'selected' : '' ?>><?= $code ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <?php
+                                $party_options = ['ALL' => 'All Parties', 'DEM' => 'Democrats', 'REP' => 'Republicans', 'NPA' => 'No Party Affiliation'];
+                                $selected_party = $_POST['party'] ?? 'ALL';
+                            ?>
+                            <div class="mb-3">
+                                <label for="party" class="form-label">Select Party:</label>
+                                <select class="form-select" name="party" id="party" required>
+                                    <?php foreach ($party_options as $pcode => $label): ?>
+                                        <option value="<?= $pcode ?>" <?= $pcode === $selected_party ? 'selected' : '' ?>><?= $label ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="address" class="form-label">Enter Address:</label>
+                                <input type="text" class="form-control" name="address" id="address" value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : '1726 Grand Ave, Deland, FL 32720'; ?>" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="radius" class="form-label">Enter Radius (miles):</label>
+                                <input type="number" class="form-control" step="0.01" name="radius" id="radius" value="<?php echo isset($_POST['radius']) ? htmlspecialchars($_POST['radius']) : '.1'; ?>" required>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">Search</button>
+                        </form>
+                        <p class="mt-2 small text-muted">Start with 0.1 miles and increase slowly for manageable results.</p>
+                        <div id="searchingIndicator" class="alert alert-info d-none mt-3">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            <strong>Searching...</strong> Please wait while we retrieve nearby voters.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <?php if (!empty($voters)): ?>
+            <div class="table-container mt-4">
+                <div class="d-flex align-items-center mb-2">
+                    <h3 class="mb-0">Voters Within <?php echo $radius; ?> Miles of <?php echo htmlspecialchars($address); ?></h3>
+                    <select id="sortOption" class="form-select form-select-sm w-auto ms-3">
+                        <option value="optimized" selected>Optimized Route</option>
+                        <option value="street">Street Name</option>
+                    </select>
+                    <button onclick="window.print();" class="btn btn-primary btn-sm ms-auto">Print Page</button>
+                </div>
+
+                <table class="table table-striped table-bordered">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Voter ID</th>
+                            <th>Name</th>
+                            <th>Address</th>
+                            <th>Phone</th>
+                            <th>DOB</th>
+                            <th>Email</th>
+                            <th>Party</th>
+                            <th class="notes-column">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($voters as $voter): ?>
+                            <tr data-voter-id="<?= htmlspecialchars($voter['VoterID'] ?? '') ?>">
+                                <td><?= htmlspecialchars($voter['VoterID'] ?? '') ?></td>
+                                <td><?= htmlspecialchars(($voter['Last_Name'] ?? '') . ', ' . ($voter['First_Name'] ?? '')) ?></td>
+                                <td><?= nl2br(htmlspecialchars($voter['Voter_Address'] ?? '')) ?></td>
+                                <td>
+                                    <?php
+                                        $phone = preg_replace('/[^0-9]/', '', $voter['Phone_Number'] ?? '');
+                                        if (strlen($phone) === 10) {
+                                            echo "(" . substr($phone, 0, 3) . ") " . substr($phone, 3, 3) . "-" . substr($phone, 6);
+                                        } else {
+                                            echo htmlspecialchars($voter['Phone_Number'] ?? '');
+                                        }
+                                    ?>
+                                </td>
+                                <td><?= htmlspecialchars($voter['Birthday'] ? date('m/d', strtotime($voter['Birthday'])) : '') ?></td>
+                                <td><?= htmlspecialchars($voter['Email_Address'] ?? '') ?></td>
+                                <td><?= htmlspecialchars($voter['Party'] ?? '') ?></td>
+                                <td class="notes-column">&nbsp;</td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
     </div>
     <script>
     const voters = <?php echo json_encode($voters); ?>;
@@ -329,5 +433,15 @@ $display_fields = [
         render(optimized);
     });
     </script>
+    <script>
+    const formEl = document.querySelector('form');
+    if (formEl) {
+        formEl.addEventListener('submit', () => {
+            const el = document.getElementById('searchingIndicator');
+            if (el) el.classList.remove('d-none');
+        });
+    }
+    </script>
+    
 </body>
 </html>
