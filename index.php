@@ -176,14 +176,18 @@ function http_get_json($url, $timeout = 1.5) {
 }
 
 function map_county_name_to_code($name) {
-    // Map a few known FL counties to 3-letter codes used by VAT
-    $map = [
-        'ALACHUA COUNTY'   => 'ALA',
-        'BREVARD COUNTY'   => 'BRE',
-        'BROWARD COUNTY'   => 'BRO',
-        'VOLUSIA COUNTY'   => 'VOL',
-        'MIAMI-DADE COUNTY'=> 'DAD',
-    ];
+    // Map FL county names to 3-letter codes used by VAT
+    static $map = null;
+    if ($map === null) {
+        $pairs = [
+            'ALACHUA' => 'ALA','BAKER' => 'BAK','BAY' => 'BAY','BRADFORD' => 'BRA','BREVARD' => 'BRE','BROWARD' => 'BRO','CALHOUN' => 'CAL','CHARLOTTE' => 'CHA','CITRUS' => 'CIT','CLAY' => 'CLA','COLLIER' => 'CLL','COLUMBIA' => 'CLM','MIAMI-DADE' => 'DAD','DESOTO' => 'DES','DIXIE' => 'DIX','DUVAL' => 'DUV','ESCAMBIA' => 'ESC','FLAGLER' => 'FLA','FRANKLIN' => 'FRA','GADSDEN' => 'GAD','GILCHRIST' => 'GIL','GLADES' => 'GLA','GULF' => 'GUL','HAMILTON' => 'HAM','HARDEE' => 'HAR','HENDRY' => 'HEN','HERNANDO' => 'HER','HIGHLANDS' => 'HIG','HILLSBOROUGH' => 'HIL','HOLMES' => 'HOL','INDIAN RIVER' => 'IND','JACKSON' => 'JAC','JEFFERSON' => 'JEF','LAFAYETTE' => 'LAF','LAKE' => 'LAK','LEE' => 'LEE','LEON' => 'LEO','LEVY' => 'LEV','LIBERTY' => 'LIB','MADISON' => 'MAD','MANATEE' => 'MAN','MARION' => 'MRN','MARTIN' => 'MRT','MONROE' => 'MON','NASSAU' => 'NAS','OKALOOSA' => 'OKA','OKEECHOBEE' => 'OKE','ORANGE' => 'ORA','OSCEOLA' => 'OSC','PALM BEACH' => 'PAL','PASCO' => 'PAS','PINELLAS' => 'PIN','POLK' => 'POL','PUTNAM' => 'PUT','SANTA ROSA' => 'SAN','SARASOTA' => 'SAR','SEMINOLE' => 'SEM','ST. JOHNS' => 'STJ','ST. LUCIE' => 'STL','SUMTER' => 'SUM','SUWANNEE' => 'SUW','TAYLOR' => 'TAY','UNION' => 'UNI','VOLUSIA' => 'VOL','WAKULLA' => 'WAK','WALTON' => 'WAL','WASHINGTON' => 'WAS'
+        ];
+        $map = [];
+        foreach ($pairs as $label => $code) {
+            $map[$label] = $code;
+            $map[$label . ' COUNTY'] = $code; // FCC returns with " County"
+        }
+    }
     $key = strtoupper(trim($name));
     return $map[$key] ?? null;
 }
@@ -214,7 +218,20 @@ $latitude = null;
 $longitude = null;
 $voters = [];
 
-$counties = ['ALA', 'BRE', 'BRO', 'VOL', 'DAD'];
+$counties = [];
+$available_counties = [];
+try {
+    $tmp_pdo = get_pdo($geo_db);
+    $rs = $tmp_pdo->query("SELECT DISTINCT county FROM geocoded_addresses WHERE county IS NOT NULL AND county <> '' ORDER BY county");
+    $available_counties = $rs ? $rs->fetchAll(PDO::FETCH_COLUMN) : [];
+    if (!empty($available_counties)) { $counties = $available_counties; }
+} catch (Exception $e) {
+    debug_log('County load warning', 'warning', $e->getMessage());
+}
+// Fallback full list if DB does not have county column or no data yet
+if (empty($counties)) {
+    $counties = ['ALA','BAK','BAY','BRA','BRE','BRO','CAL','CHA','CIT','CLA','CLL','CLM','DAD','DES','DIX','DUV','ESC','FLA','FRA','GAD','GIL','GLA','GUL','HAM','HAR','HEN','HER','HIG','HIL','HOL','IND','JAC','JEF','LAF','LAK','LEE','LEO','LEV','LIB','MAD','MAN','MRN','MRT','MON','NAS','OKA','OKE','ORA','OSC','PAL','PAS','PIN','POL','PUT','SAN','SAR','SEM','STJ','STL','SUM','SUW','TAY','UNI','VOL','WAK','WAL','WAS'];
+}
 $parties  = ['ALL', 'DEM', 'REP', 'NPA'];
 
 // Attempt to geolocate user on initial load (GET), to set map default and county
