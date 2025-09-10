@@ -848,11 +848,23 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
       .btn-outline-primary.active:focus,
       .btn-outline-primary.active:hover { color: #fff; background-color: #1976d2; border-color: #1976d2; }
       .btn-outline-primary:not(.active):hover { border-color: #1976d2; color: #1976d2; background-color: rgba(25,118,210,.08); }
+      /* Mobile adjustments */
+      .mobile-only { display: none; }
+      @media (max-width: 768px) {
+        #map { left: 0; }
+        #sidebar { width: 100%; left: 0; right: 0; transform: translateX(0); transition: transform 220ms ease; z-index: 1400; }
+        #sidebar.mobile-hidden { transform: translateX(-100%); }
+        #resultsTab { left: 12px; }
+        #resultsPanel { left: 0; }
+        .mobile-only { display: inline-block; }
+        .mobile-open-sidebar { position: absolute; top: 12px; left: 12px; z-index: 1450; }
+      }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
-        <div class="d-flex align-items-center">
-          <h6 class="mb-0 text-truncate" style="max-width:288px">Voter Radius Map Tool</h6>
+        <div class="d-flex align-items-center justify-content-between">
+          <h6 class="mb-0 text-truncate" style="max-width:240px">Voter Radius Map Tool</h6>
+          <button type="button" id="hideSidebarBtn" class="btn btn-outline-secondary btn-sm mobile-only">Hide</button>
         </div>
       </div>
       <div class="sidebar-body">
@@ -927,6 +939,7 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
       </div>
     </div>
     <div id="map"></div>
+    <button type="button" id="openSidebarBtn" class="btn btn-primary btn-sm mobile-open-sidebar mobile-only">Options</button>
     <?php $is_post = ($_SERVER["REQUEST_METHOD"] === "POST"); ?>
     <?php if ($is_post): ?>
     <div id="resultsTab" class="btn-group">
@@ -1261,6 +1274,24 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
           // Auto-open after successful search
           const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
           if (panel) { if (autoShow) panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
+        } catch(_) {}
+        // Mobile sidebar show/hide
+        try {
+          const sidebar = document.getElementById('sidebar');
+          const openBtn = document.getElementById('openSidebarBtn');
+          const hideBtn = document.getElementById('hideSidebarBtn');
+          const isMobile = () => window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+          function showSidebar(){ if (!sidebar) return; sidebar.classList.remove('mobile-hidden'); if (openBtn) openBtn.style.display='none'; setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 200); }
+          function hideSidebar(){ if (!sidebar) return; sidebar.classList.add('mobile-hidden'); if (openBtn) openBtn.style.display='inline-block'; setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 200); }
+          // Start visible on mobile, hidden on larger screens
+          if (isMobile()) { showSidebar(); } else { hideSidebar(); }
+          if (openBtn) openBtn.addEventListener('click', showSidebar);
+          if (hideBtn) hideBtn.addEventListener('click', hideSidebar);
+          // On resize, re-evaluate
+          window.addEventListener('resize', ()=>{ if (isMobile()) { showSidebar(); } else { hideSidebar(); } });
+          // Hide on search submit to reveal map
+          const form = document.querySelector('#sidebar form');
+          if (form) form.addEventListener('submit', ()=>{ if (isMobile()) hideSidebar(); });
         } catch(_) {}
         // Print view popup: submit voters + map params to print_view.php in a new tab
         (function(){
