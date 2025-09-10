@@ -831,9 +831,10 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       #map { position: absolute; top: 0; bottom: 0; right: 0; left: 320px; z-index: 0; }
       #sidebar { position: absolute; top: 0; bottom: 0; left: 0; width: 320px; background: #fff; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
       #sidebar .sidebar-body { padding: 16px; overflow-y: auto; }
-      #sidebar .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; }
+      #sidebar .sidebar-header { padding: 12px 16px; border-bottom: 1px solid #eee; }
       #sidebar .sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid #eee; }
-      #resultsTab { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1200; }
+      /* Show/Hide results button on the left, aligned with the map edge */
+      #resultsTab { position: absolute; left: 336px; bottom: 12px; z-index: 1200; }
       #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 45vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; transform: translateY(100%); transition: transform 240ms cubic-bezier(0.4, 0.0, 0.2, 1); box-shadow: 0 -4px 16px rgba(0,0,0,0.12); z-index: 1300; border-top-left-radius: 10px; border-top-right-radius: 10px; }
       #resultsPanel.show { transform: translateY(0); }
       .tray-handle { width: 36px; height: 4px; border-radius: 999px; background: #c8c8c8; display: inline-block; }
@@ -841,7 +842,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
         <div class="d-flex align-items-center">
-          <h5 class="mb-0">Voter Radius</h5>
+          <h6 class="mb-0 text-truncate" style="max-width:288px">Voter Radius Map Tool</h6>
         </div>
       </div>
       <div class="sidebar-body">
@@ -903,16 +904,12 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
     <?php $is_post = ($_SERVER["REQUEST_METHOD"] === "POST"); ?>
     <?php if ($is_post): ?>
     <div id="resultsTab" class="btn-group">
-      <button id="showResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Show Results</button>
+      <button id="showResultsBtn" class="btn btn-primary btn-sm">Show Results</button>
     </div>
     <?php endif; ?>
     <div id="resultsPanel" class="shadow">
-      <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom bg-light">
-        <div class="d-flex align-items-center gap-2">
-          <span class="tray-handle d-inline-block"></span>
-          <strong class="small mb-0">Results</strong>
-        </div>
-        <button id="hideResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Hide Results</button>
+      <div class="d-flex align-items-center justify-content-start px-3 py-2 border-bottom bg-light">
+        <button id="hideResultsBtn" class="btn btn-primary btn-sm">Hide Results</button>
       </div>
       <?php if (!empty($voters)): ?>
         <div class="p-2">
