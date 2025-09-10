@@ -746,7 +746,10 @@ $display_fields = [
                         <option value="optimized" selected>Optimized Route</option>
                         <option value="street">Street Name</option>
                     </select>
-                    <button onclick="window.print();" class="btn btn-primary btn-sm ms-auto">Print Page</button>
+                    <div class="ms-auto d-flex gap-2">
+                        <button id="exportCsvBtn" type="button" class="btn btn-outline-secondary btn-sm">Export CSV</button>
+                        <button onclick="window.print();" class="btn btn-primary btn-sm">Print Page</button>
+                    </div>
                 </div>
 
                 <table class="table table-striped table-bordered">
@@ -780,7 +783,17 @@ $display_fields = [
                                 </td>
                                 <td><?= htmlspecialchars($voter['Birthday'] ? date('m/d', strtotime($voter['Birthday'])) : '') ?></td>
                                 <td><?= htmlspecialchars($voter['Email_Address'] ?? '') ?></td>
-                                <td><?= htmlspecialchars($voter['Party'] ?? '') ?></td>
+                                <td>
+                                    <?php
+                                        $p = strtoupper(trim($voter['Party'] ?? ''));
+                                        $dot = '#8e8e8e';
+                                        if ($p === 'DEM') $dot = '#1976d2';
+                                        elseif ($p === 'REP') $dot = '#d32f2f';
+                                        elseif ($p === 'NPA') $dot = '#616161';
+                                    ?>
+                                    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background: <?= $dot ?>;margin-right:6px"></span>
+                                    <?= htmlspecialchars($voter['Party'] ?? '') ?>
+                                </td>
                                 <td class="notes-column">&nbsp;</td>
                             </tr>
                         <?php endforeach; ?>
@@ -888,6 +901,53 @@ $display_fields = [
         });
     }
     document.addEventListener("DOMContentLoaded",()=>{
+        // Persist last-selected filters locally (applies on GET/not POST)
+        try {
+            const isPost = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST") ?>;
+            const countySel = document.getElementById('county');
+            const partySel = document.getElementById('party');
+            const radiusInput = document.getElementById('radius');
+            if (!isPost) {
+                const lc = localStorage.getItem('lastCounty');
+                const lp = localStorage.getItem('lastParty');
+                const lr = localStorage.getItem('lastRadius');
+                if (countySel && lc) countySel.value = lc;
+                if (partySel && lp) partySel.value = lp;
+                if (radiusInput && lr) radiusInput.value = lr;
+            }
+            if (countySel) countySel.addEventListener('change', ()=> localStorage.setItem('lastCounty', countySel.value));
+            if (partySel) partySel.addEventListener('change', ()=> localStorage.setItem('lastParty', partySel.value));
+            if (radiusInput) radiusInput.addEventListener('change', ()=> localStorage.setItem('lastRadius', radiusInput.value));
+        } catch(_) {}
+
+        // CSV export
+        const csvBtn = document.getElementById('exportCsvBtn');
+        if (csvBtn) {
+            csvBtn.addEventListener('click', ()=>{
+                if (!Array.isArray(voters) || voters.length===0) return;
+                const headers = ['VoterID','Last_Name','First_Name','Voter_Address','Phone_Number','Birthday','Email_Address','Party'];
+                const esc = (s)=>{
+                    s = (s==null? '': String(s));
+                    if (s.search(/[",\n]/)>=0) return '"' + s.replace(/"/g,'""') + '"';
+                    return s;
+                };
+                const rows = [headers.join(',')].concat(voters.map(v=>[
+                    v.VoterID,
+                    v.Last_Name,
+                    v.First_Name,
+                    v.Voter_Address ? v.Voter_Address.replace(/\n/g,' '):'',
+                    v.Phone_Number,
+                    v.Birthday,
+                    v.Email_Address,
+                    v.Party
+                ].map(esc).join(',')));
+                const blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8;'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'voters.csv';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                setTimeout(()=> URL.revokeObjectURL(url), 1000);
+            });
+        }
         const lat=<?php echo $latitude ?? 29.0283; ?>, lon=<?php echo $longitude ?? -81.3031; ?>;
         const radiusInMeters=<?php echo isset($radius)?$radius*1609.34:1609.34; ?>;
         const map=L.map('map').setView([lat,lon],14);
