@@ -660,6 +660,8 @@ $display_fields = [
     'Party'         => 'Party',
 ];
 }
+// Experimental full-screen maps layout behind ?gmaps=1
+$gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -681,6 +683,7 @@ $display_fields = [
     </style>
 </head>
 <body>
+<?php if (!$gmaps): ?>
     <div class="container mt-4">
         <h2 class="text-center mb-4">Find Voters Within a Radius</h2>
 
@@ -809,6 +812,114 @@ $display_fields = [
 </div>
 <?php endif; ?>
     </div>
+<?php else: ?>
+    <style>
+      html, body { height: 100%; }
+      body { margin: 0; }
+      #map { position: absolute; top: 0; bottom: 0; right: 0; left: 320px; }
+      #sidebar { position: absolute; top: 0; bottom: 0; left: 0; width: 320px; background: #fff; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
+      #sidebar .sidebar-body { padding: 12px; overflow-y: auto; }
+      #sidebar .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; }
+      #sidebar .sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid #eee; }
+      #resultsToggle { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1000; }
+      #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 40vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; display: none; }
+      #resultsPanel.show { display: block; }
+    </style>
+    <div id="sidebar" class="shadow-sm">
+      <div class="sidebar-header">
+        <div class="d-flex align-items-center">
+          <h5 class="mb-0">Voter Radius</h5>
+        </div>
+      </div>
+      <div class="sidebar-body">
+        <form method="POST" action="">
+          <?php $selected_county = $_POST['county'] ?? ($geoip_county ?? ($counties[0] ?? '')); ?>
+          <div class="mb-2">
+            <label for="county" class="form-label">County</label>
+            <select class="form-select form-select-sm" name="county" id="county" required>
+              <?php foreach ($counties as $code): ?>
+                <option value="<?= $code ?>" <?= $code === $selected_county ? 'selected' : '' ?>><?= $code ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <?php $party_options = ['ALL' => 'All Parties', 'DEM' => 'Democrats', 'REP' => 'Republicans', 'NPA' => 'No Party Affiliation']; $selected_party = $_POST['party'] ?? 'ALL'; ?>
+          <div class="mb-2">
+            <label for="party" class="form-label">Party</label>
+            <select class="form-select form-select-sm" name="party" id="party" required>
+              <?php foreach ($party_options as $pcode => $label): ?>
+                <option value="<?= $pcode ?>" <?= $pcode === $selected_party ? 'selected' : '' ?>><?= $label ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label for="address" class="form-label">Address</label>
+            <input type="text" class="form-control form-control-sm" name="address" id="address" value="<?= isset($_POST['address']) ? htmlspecialchars($_POST['address']) : '' ?>" placeholder="e.g., 1600 Pennsylvania Ave NW, Washington, DC 20500" required>
+            <div class="form-text">Include street, city, state, and ZIP for best results.</div>
+          </div>
+          <div class="mb-2">
+            <label for="radius" class="form-label">Radius (miles)</label>
+            <input type="number" class="form-control form-control-sm" step="0.01" name="radius" id="radius" value="<?= isset($_POST['radius']) ? htmlspecialchars($_POST['radius']) : '.1' ?>" required>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-sm">Search</button>
+          </div>
+        </form>
+        <div id="searchingIndicator" class="alert alert-info d-none mt-3"><div class="spinner-border spinner-border-sm me-2" role="status"></div><strong>Searching...</strong> Please wait.</div>
+        <hr>
+        <div class="d-flex align-items-center gap-2">
+          <select id="sortOption" class="form-select form-select-sm w-auto">
+            <option value="optimized" selected>Optimized</option>
+            <option value="street">Street</option>
+          </select>
+          <input type="checkbox" id="showRoute" class="form-check-input" checked>
+          <label for="showRoute" class="form-check-label">Show route</label>
+        </div>
+        <div class="mt-2 d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmPickStart">Pick start</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmResetStart">Use address</button>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="d-grid gap-2">
+          <button id="exportCsvBtn" type="button" class="btn btn-outline-secondary btn-sm">Export CSV</button>
+          <button id="openPrintView" type="button" class="btn btn-primary btn-sm">Open Print View</button>
+        </div>
+      </div>
+    </div>
+    <div id="map"></div>
+    <div id="resultsToggle" class="btn-group">
+      <button id="toggleResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Results</button>
+    </div>
+    <div id="resultsPanel" class="shadow">
+      <?php if (!empty($voters)): ?>
+        <div class="p-2">
+          <h6 class="mb-2">Voters Within <?= $radius; ?> Miles of <?= htmlspecialchars($address); ?></h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped table-bordered mb-0">
+              <thead class="table-light">
+                <tr><th>Voter ID</th><th>Name</th><th>Address</th><th>Phone</th><th>DOB</th><th>Email</th><th>Party</th></tr>
+              </thead>
+              <tbody>
+                <?php foreach ($voters as $voter): ?>
+                  <tr data-voter-id="<?= htmlspecialchars($voter['VoterID'] ?? '') ?>">
+                    <td><?= htmlspecialchars($voter['VoterID'] ?? '') ?></td>
+                    <td><?= htmlspecialchars(($voter['Last_Name'] ?? '') . ', ' . ($voter['First_Name'] ?? '')) ?></td>
+                    <td><?= nl2br(htmlspecialchars($voter['Voter_Address'] ?? '')) ?></td>
+                    <td><?php $phone = preg_replace('/[^0-9]/', '', $voter['Phone_Number'] ?? ''); echo (strlen($phone)===10)?"(".substr($phone,0,3).") ".substr($phone,3,3)."-".substr($phone,6):htmlspecialchars($voter['Phone_Number'] ?? ''); ?></td>
+                    <td><?= htmlspecialchars($voter['Birthday'] ? date('m/d', strtotime($voter['Birthday'])) : '') ?></td>
+                    <td><?= htmlspecialchars($voter['Email_Address'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($voter['Party'] ?? '') ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <?php elseif ($_SERVER["REQUEST_METHOD"] === "POST" && empty($error)): ?>
+        <div class="p-2 text-muted">No voters found. Try a slightly larger radius.</div>
+      <?php endif; ?>
+    </div>
+<?php endif; ?>
     
     <!-- Start tip modal -->
     <div class="modal fade" id="startTipModal" tabindex="-1" aria-labelledby="startTipLabel" aria-hidden="true">
@@ -1020,24 +1131,18 @@ $display_fields = [
 
         // Start picker controls
         (function(){
-            const sel = document.getElementById('sortOption');
-            if (!sel || !sel.parentElement) return;
-
-            // Group container to avoid layout shift
-            const toolbar = document.createElement('div');
-            toolbar.className = 'btn-toolbar ms-2';
-            const group = document.createElement('div');
-            group.className = 'btn-group btn-group-sm';
-            toolbar.appendChild(group);
-
-            const pickBtn = document.createElement('button');
-            pickBtn.type='button'; pickBtn.className='btn btn-outline-secondary'; pickBtn.textContent='Pick start on map';
-            const resetBtn = document.createElement('button');
-            resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Use search address';
-            group.appendChild(pickBtn);
-            group.appendChild(resetBtn);
-            sel.parentElement.appendChild(toolbar);
-
+            // Reuse inline controls if present (gmaps), else create toolbar under sortOption
+            let pickBtn = document.getElementById('gmPickStart');
+            let resetBtn = document.getElementById('gmResetStart');
+            if (!pickBtn || !resetBtn) {
+                const sel = document.getElementById('sortOption');
+                if (!sel || !sel.parentElement) return;
+                const toolbar = document.createElement('div'); toolbar.className = 'btn-toolbar ms-2';
+                const group = document.createElement('div'); group.className = 'btn-group btn-group-sm'; toolbar.appendChild(group);
+                pickBtn = document.createElement('button'); pickBtn.type='button'; pickBtn.className='btn btn-outline-secondary'; pickBtn.textContent='Pick start on map';
+                resetBtn = document.createElement('button'); resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Use search address';
+                group.appendChild(pickBtn); group.appendChild(resetBtn); sel.parentElement.appendChild(toolbar);
+            }
             pickBtnRef = pickBtn;
             map.on('click', (e)=>{ if (!picking) return; deactivatePicking(); updateStart(e.latlng); });
 
@@ -1058,8 +1163,8 @@ $display_fields = [
                 modal.show();
             }
 
-            pickBtn.addEventListener('click', ()=>{ beginPickFlow(); });
-            resetBtn.addEventListener('click', ()=>{ picking=false; setCursor(false); updateStart({lat, lng: lon}); });
+            if (pickBtn) pickBtn.addEventListener('click', ()=>{ beginPickFlow(); });
+            if (resetBtn) resetBtn.addEventListener('click', ()=>{ picking=false; setCursor(false); updateStart({lat, lng: lon}); });
         })();
 
         function render(list){
@@ -1103,6 +1208,23 @@ $display_fields = [
         if(sortSel){sortSel.addEventListener('change',()=>{renderCurrent();});}
         if(routeToggle){routeToggle.addEventListener('change',()=>{renderCurrent();});}
         renderCurrent();
+        // Toggle results panel in gmaps mode
+        try {
+          const toggleBtn = document.getElementById('toggleResultsBtn');
+          const panel = document.getElementById('resultsPanel');
+          if (toggleBtn && panel) { toggleBtn.addEventListener('click', ()=> panel.classList.toggle('show')); }
+        } catch(_) {}
+        // Print view popup in gmaps mode
+        const openPrint = document.getElementById('openPrintView');
+        if (openPrint) {
+          openPrint.addEventListener('click', ()=>{
+            const w = window.open('', '_blank'); if (!w) return;
+            const esc = (s)=> (s==null?'':String(s));
+            const rows = voters.map(v=>`<tr><td>${esc(v.VoterID)}</td><td>${esc(v.Last_Name)}, ${esc(v.First_Name)}</td><td>${esc((v.Voter_Address||'').replace(/\n/g,'<br>'))}</td><td>${esc(v.Phone_Number||'')}</td><td>${esc(v.Birthday||'')}</td><td>${esc(v.Email_Address||'')}</td><td>${esc(v.Party||'')}</td></tr>`).join('');
+            const html = `<!doctype html><html><head><meta charset="utf-8"><title>Voter List</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"><style>@media print{@page{size:landscape;margin:0.25in}} table{font-size:12px}</style></head><body class=\"p-3\"><h5>Voter List</h5><table class=\"table table-striped table-bordered\"><thead class=\"table-light\"><tr><th>Voter ID</th><th>Name</th><th>Address</th><th>Phone</th><th>DOB</th><th>Email</th><th>Party</th></tr></thead><tbody>${rows}</tbody></table><script>window.print()</script></body></html>`;
+            w.document.open(); w.document.write(html); w.document.close();
+          });
+        }
     });
     </script>
     <!-- Bootstrap bundle (required for modal, etc.) -->
