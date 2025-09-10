@@ -1,0 +1,867 @@
+Array
+(
+    [0] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => <derived2>
+            [partitions] => 
+            [type] => ALL
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 50
+            [filtered] => 100
+            [Extra] => Using where
+        )
+
+    [1] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => mva
+            [partitions] => G01,G02,G03,G04,G05,G06,G07,G08,G09,G10
+            [type] => ref
+            [possible_keys] => PRIMARY
+            [key] => PRIMARY
+            [key_len] => 4
+            [ref] => ids.id
+            [rows] => 1
+            [filtered] => 100
+            [Extra] => Using where
+        )
+
+    [2] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => vm
+            [partitions] => G05
+            [type] => ref
+            [possible_keys] => voter_index,county_index,precinct_index,split_index
+            [key] => county_index
+            [key_len] => 16
+            [ref] => const,const
+            [rows] => 842148
+            [filtered] => 1.0000001192093
+            [Extra] => Using index condition; Using where
+        )
+
+    [3] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => d
+            [partitions] => G01,G02,G03,G04,G05,G06,G07,G08,G09,G10
+            [type] => ALL
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 19840207
+            [filtered] => 10.000000953674
+            [Extra] => Using where; Using join buffer (hash join)
+        )
+
+    [4] => Array
+        (
+            [id] => 2
+            [select_type] => DERIVED
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [5] => Array
+        (
+            [id] => 3
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [6] => Array
+        (
+            [id] => 4
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [7] => Array
+        (
+            [id] => 5
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [8] => Array
+        (
+            [id] => 6
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [9] => Array
+        (
+            [id] => 7
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [10] => Array
+        (
+            [id] => 8
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [11] => Array
+        (
+            [id] => 9
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [12] => Array
+        (
+            [id] => 10
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [13] => Array
+        (
+            [id] => 11
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [14] => Array
+        (
+            [id] => 12
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [15] => Array
+        (
+            [id] => 13
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [16] => Array
+        (
+            [id] => 14
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [17] => Array
+        (
+            [id] => 15
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [18] => Array
+        (
+            [id] => 16
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [19] => Array
+        (
+            [id] => 17
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [20] => Array
+        (
+            [id] => 18
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [21] => Array
+        (
+            [id] => 19
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [22] => Array
+        (
+            [id] => 20
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [23] => Array
+        (
+            [id] => 21
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [24] => Array
+        (
+            [id] => 22
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [25] => Array
+        (
+            [id] => 23
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [26] => Array
+        (
+            [id] => 24
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [27] => Array
+        (
+            [id] => 25
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [28] => Array
+        (
+            [id] => 26
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [29] => Array
+        (
+            [id] => 27
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [30] => Array
+        (
+            [id] => 28
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [31] => Array
+        (
+            [id] => 29
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [32] => Array
+        (
+            [id] => 30
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [33] => Array
+        (
+            [id] => 31
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [34] => Array
+        (
+            [id] => 32
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [35] => Array
+        (
+            [id] => 33
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [36] => Array
+        (
+            [id] => 34
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [37] => Array
+        (
+            [id] => 35
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [38] => Array
+        (
+            [id] => 36
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [39] => Array
+        (
+            [id] => 37
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [40] => Array
+        (
+            [id] => 38
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [41] => Array
+        (
+            [id] => 39
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [42] => Array
+        (
+            [id] => 40
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [43] => Array
+        (
+            [id] => 41
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [44] => Array
+        (
+            [id] => 42
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [45] => Array
+        (
+            [id] => 43
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [46] => Array
+        (
+            [id] => 44
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [47] => Array
+        (
+            [id] => 45
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [48] => Array
+        (
+            [id] => 46
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [49] => Array
+        (
+            [id] => 47
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [50] => Array
+        (
+            [id] => 48
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [51] => Array
+        (
+            [id] => 49
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [52] => Array
+        (
+            [id] => 50
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [53] => Array
+        (
+            [id] => 51
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+)
