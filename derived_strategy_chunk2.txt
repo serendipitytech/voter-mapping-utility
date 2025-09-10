@@ -1,0 +1,147 @@
+Array
+(
+    [0] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => <derived2>
+            [partitions] => 
+            [type] => ALL
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 5
+            [filtered] => 100
+            [Extra] => Using where
+        )
+
+    [1] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => mva
+            [partitions] => G01,G02,G03,G04,G05,G06,G07,G08,G09,G10
+            [type] => ref
+            [possible_keys] => PRIMARY
+            [key] => PRIMARY
+            [key_len] => 4
+            [ref] => ids.id
+            [rows] => 1
+            [filtered] => 100
+            [Extra] => Using where
+        )
+
+    [2] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => vm
+            [partitions] => G05
+            [type] => ref
+            [possible_keys] => voter_index,county_index,precinct_index,split_index
+            [key] => county_index
+            [key_len] => 16
+            [ref] => const,const
+            [rows] => 842148
+            [filtered] => 1.0000001192093
+            [Extra] => Using index condition; Using where
+        )
+
+    [3] => Array
+        (
+            [id] => 1
+            [select_type] => PRIMARY
+            [table] => d
+            [partitions] => G01,G02,G03,G04,G05,G06,G07,G08,G09,G10
+            [type] => ALL
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 19840207
+            [filtered] => 10.000000953674
+            [Extra] => Using where; Using join buffer (hash join)
+        )
+
+    [4] => Array
+        (
+            [id] => 2
+            [select_type] => DERIVED
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [5] => Array
+        (
+            [id] => 3
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [6] => Array
+        (
+            [id] => 4
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [7] => Array
+        (
+            [id] => 5
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+    [8] => Array
+        (
+            [id] => 6
+            [select_type] => UNION
+            [table] => 
+            [partitions] => 
+            [type] => 
+            [possible_keys] => 
+            [key] => 
+            [key_len] => 
+            [ref] => 
+            [rows] => 
+            [filtered] => 
+            [Extra] => No tables used
+        )
+
+)

@@ -24,6 +24,46 @@
 - Connects to geocoded address and voter databases
 - Displays a "Searching..." indicator when form is submitted
 
+## Local Docker (Dev)
+
+This repo supports a simple local dev container that mounts the project into an Apache + PHP image. The Docker files are gitignored so they won’t be committed and will persist regardless of branch.
+
+- Files used locally:
+  - `Dockerfile`
+  - `docker-compose.yml`
+  - `docker/app/entrypoint.sh`
+- Start/stop:
+  - `docker compose up --build -d`
+  - `docker compose down`
+- Access: http://localhost:8080
+- Logs: `docker compose logs -f app`
+- Live reload: code changes reflect immediately (bind mount).
+- Env: the container reads your `.env`; ensure it points to your remote DBs.
+
+If you prefer to keep Docker outside this project, copy these three files into your external docker folder and adjust the compose build context and volume to point at this repo path, for example:
+
+```
+version: "3.8"
+services:
+  app:
+    build:
+      context: /absolute/path/to/voter-mapping-utility
+      dockerfile: Dockerfile
+    volumes:
+      - /absolute/path/to/voter-mapping-utility:/var/www/html
+    ports:
+      - "8080:80"
+    command: ["bash", "docker/app/entrypoint.sh"]
+```
+
+### Full-screen map preview (optional)
+
+There’s an experimental Google/Apple Maps–style layout behind a flag. It keeps the same behavior (filters, route, start picking) but uses a full-screen map with a left sidebar and an expandable results tray.
+
+- Open with: `?gmaps=1` (e.g., `http://localhost:8080/index.php?gmaps=1`)
+- Results tray: click “Show Results” to slide up; “Hide Results” to close. It opens automatically after a successful search.
+- The original layout remains the default; use the flag only for preview/testing.
+
 ## Performance & Debug
 
 - Geo prefilter uses `MBRContains` on `geocode_db.geocoded_addresses.location` with a SPATIAL INDEX, then refines radius via `ST_Distance_Sphere` (miles).
