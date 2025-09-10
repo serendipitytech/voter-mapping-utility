@@ -828,15 +828,15 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
     <style>
       html, body { height: 100%; }
       body { margin: 0; }
-      #map { position: absolute; top: 0; bottom: 0; right: 0; left: 320px; }
+      #map { position: absolute; top: 0; bottom: 0; right: 0; left: 320px; z-index: 0; }
       #sidebar { position: absolute; top: 0; bottom: 0; left: 0; width: 320px; background: #fff; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
       #sidebar .sidebar-body { padding: 16px; overflow-y: auto; }
       #sidebar .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; }
       #sidebar .sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid #eee; }
-      #resultsTab { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1000; }
-      #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 45vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; transform: translateY(100%); transition: transform 240ms cubic-bezier(0.4, 0.0, 0.2, 1); box-shadow: 0 -4px 16px rgba(0,0,0,0.08); }
+      #resultsTab { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1200; }
+      #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 45vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; transform: translateY(100%); transition: transform 240ms cubic-bezier(0.4, 0.0, 0.2, 1); box-shadow: 0 -4px 16px rgba(0,0,0,0.12); z-index: 1300; border-top-left-radius: 10px; border-top-right-radius: 10px; }
       #resultsPanel.show { transform: translateY(0); }
-      .tray-handle { width: 36px; height: 4px; border-radius: 999px; background: #ccc; }
+      .tray-handle { width: 36px; height: 4px; border-radius: 999px; background: #c8c8c8; display: inline-block; }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
