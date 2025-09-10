@@ -889,15 +889,21 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
           <label for="showRoute" class="form-check-label">Show route</label>
         </div>
         <div class="mt-2 d-flex gap-2">
-          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmPickStart">Pick start</button>
-          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmResetStart">Use address</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmResetStart">Reset starting address</button>
         </div>
+        <?php if ($_SERVER["REQUEST_METHOD"] === "POST"): ?>
+        <div class="mt-2 small text-muted">
+          Tip: click any map pin to view details and set it as your route start. Use “Reset starting address” to revert to the search address.
+        </div>
+        <?php endif; ?>
       </div>
       <div class="sidebar-footer">
+        <?php if (!empty($voters)): ?>
         <div class="d-grid gap-2">
           <button id="exportCsvBtn" type="button" class="btn btn-outline-secondary btn-sm">Export CSV</button>
           <button id="openPrintView" type="button" class="btn btn-primary btn-sm">Open Print View</button>
         </div>
+        <?php endif; ?>
       </div>
     </div>
     <div id="map"></div>
@@ -1107,11 +1113,8 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         const origin = {lat, lon};
         let start = {lat, lon};
         let startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
-        // Shared picking state and helpers
-        let picking = false;
-        let pickBtnRef = null;
-        const setCursor = (v)=>{ map.getContainer().style.cursor = v ? 'crosshair' : ''; };
-        function deactivatePicking(){ picking=false; setCursor(false); if (pickBtnRef){ pickBtnRef.classList.remove('active'); pickBtnRef.setAttribute('aria-pressed','false'); } }
+        // Shared helpers
+        function deactivatePicking(){}
         function updateStart(latlng){
             start = {lat: latlng.lat, lon: latlng.lng};
             if (startMarker) { try { map.removeLayer(startMarker); } catch(e){} }
@@ -1157,42 +1160,18 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
             return cb;
         })();
 
-        // Start picker controls
+        // Start controls: only a reset button; clicking a pin uses the popup button to set start
         (function(){
-            // Reuse inline controls if present (gmaps), else create toolbar under sortOption
-            let pickBtn = document.getElementById('gmPickStart');
             let resetBtn = document.getElementById('gmResetStart');
-            if (!pickBtn || !resetBtn) {
+            if (!resetBtn) {
                 const sel = document.getElementById('sortOption');
                 if (!sel || !sel.parentElement) return;
                 const toolbar = document.createElement('div'); toolbar.className = 'btn-toolbar ms-2';
                 const group = document.createElement('div'); group.className = 'btn-group btn-group-sm'; toolbar.appendChild(group);
-                pickBtn = document.createElement('button'); pickBtn.type='button'; pickBtn.className='btn btn-outline-secondary'; pickBtn.textContent='Pick start on map';
-                resetBtn = document.createElement('button'); resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Use search address';
-                group.appendChild(pickBtn); group.appendChild(resetBtn); sel.parentElement.appendChild(toolbar);
+                resetBtn = document.createElement('button'); resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Reset starting address';
+                group.appendChild(resetBtn); sel.parentElement.appendChild(toolbar);
             }
-            pickBtnRef = pickBtn;
-            map.on('click', (e)=>{ if (!picking) return; deactivatePicking(); updateStart(e.latlng); });
-
-            function beginPickFlow(){
-                const hideTip = localStorage.getItem('hideStartTip') === '1';
-                if (hideTip) { picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true'); return; }
-                const modalEl = document.getElementById('startTipModal');
-                if (!modalEl) { picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true'); return; }
-                const modal = new bootstrap.Modal(modalEl);
-                const confirmBtn = modalEl.querySelector('#startTipConfirm');
-                const chk = modalEl.querySelector('#startTipDontShow');
-                const onConfirm = ()=>{
-                    if (chk && chk.checked) localStorage.setItem('hideStartTip','1');
-                    modal.hide(); picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true');
-                    confirmBtn.removeEventListener('click', onConfirm);
-                };
-                confirmBtn.addEventListener('click', onConfirm);
-                modal.show();
-            }
-
-            if (pickBtn) pickBtn.addEventListener('click', ()=>{ beginPickFlow(); });
-            if (resetBtn) resetBtn.addEventListener('click', ()=>{ picking=false; setCursor(false); updateStart({lat, lng: lon}); });
+            if (resetBtn) resetBtn.addEventListener('click', ()=>{ updateStart({lat, lng: lon}); });
         })();
 
         function render(list){
@@ -1213,9 +1192,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
                     const b = document.getElementById(btnId);
                     if (b) b.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); updateStart({lat: v.Latitude, lng: v.Longitude}); cm.closePopup(); });
                 });
-                cm.on('click', (e)=>{
-                    if (picking) { L.DomEvent.stop(e); deactivatePicking(); updateStart(e.latlng); }
-                });
+                // Default click shows popup; use the popup button to set start
                 markerLayer.addLayer(cm);
             });
             if(path.length && routeToggle && routeToggle.checked) routeLine=L.polyline(path,{color:'#1565c0',weight:3,opacity:0.8}).addTo(map);
