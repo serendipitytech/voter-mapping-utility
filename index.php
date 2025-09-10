@@ -821,7 +821,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       #sidebar .sidebar-body { padding: 12px; overflow-y: auto; }
       #sidebar .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; }
       #sidebar .sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid #eee; }
-      #resultsToggle { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1000; }
+      #resultsTab { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1000; }
       #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 45vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; transform: translateY(100%); transition: transform 200ms ease-in-out; box-shadow: 0 -4px 16px rgba(0,0,0,0.08); }
       #resultsPanel.show { transform: translateY(0); }
     </style>
@@ -887,10 +887,14 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       </div>
     </div>
     <div id="map"></div>
-    <div id="resultsToggle" class="btn-group">
-      <button id="toggleResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Show Results</button>
+    <div id="resultsTab" class="btn-group">
+      <button id="showResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Show Results</button>
     </div>
     <div id="resultsPanel" class="shadow">
+      <div class="d-flex align-items-center justify-content-between p-2 border-bottom bg-light">
+        <strong class="small mb-0">Results</strong>
+        <button id="hideResultsBtn" class="btn btn-outline-secondary btn-sm">Hide Results</button>
+      </div>
       <?php if (!empty($voters)): ?>
         <div class="p-2">
           <h6 class="mb-2">Voters Within <?= $radius; ?> Miles of <?= htmlspecialchars($address); ?></h6>
@@ -1210,16 +1214,16 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         renderCurrent();
         // Toggle results panel in gmaps mode with button label + map resize
         try {
-          const toggleBtn = document.getElementById('toggleResultsBtn');
+          const showBtn = document.getElementById('showResultsBtn');
+          const hideBtn = document.getElementById('hideResultsBtn');
+          const tab = document.getElementById('resultsTab');
           const panel = document.getElementById('resultsPanel');
-          function setBtnLabel(){ if (!toggleBtn) return; toggleBtn.textContent = panel.classList.contains('show') ? 'Hide Results' : 'Show Results'; }
-          if (toggleBtn && panel) {
-            toggleBtn.addEventListener('click', ()=>{ panel.classList.toggle('show'); setBtnLabel(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 210); });
-            setBtnLabel();
-          }
+          function syncTab(){ if (!tab || !panel) return; tab.style.display = panel.classList.contains('show') ? 'none' : 'block'; }
+          if (showBtn && panel) showBtn.addEventListener('click', ()=>{ panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); });
+          if (hideBtn && panel) hideBtn.addEventListener('click', ()=>{ panel.classList.remove('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); });
           // Auto-open after successful search
           const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
-          if (panel && autoShow) { panel.classList.add('show'); setBtnLabel(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 210); }
+          if (panel && autoShow) { panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
         } catch(_) {}
         // Print view popup in gmaps mode
         const openPrint = document.getElementById('openPrintView');
