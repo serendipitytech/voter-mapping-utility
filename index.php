@@ -660,8 +660,8 @@ $display_fields = [
     'Party'         => 'Party',
 ];
 }
-// Experimental full-screen maps layout behind ?gmaps=1
-$gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
+// Full-screen maps layout is now default. Use ?gmaps=0 to see legacy layout.
+$gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1130,8 +1130,8 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         } catch (e) {
             map.setView([lat,lon], 15);
         }
-        const origin = {lat, lon};
-        let start = {lat, lon};
+        const origin = {lat: lat, lon: lon};
+        let start = {lat: lat, lon: lon};
         let startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
         // Shared helpers
         function deactivatePicking(){}
@@ -1262,17 +1262,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
           const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
           if (panel) { if (autoShow) panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
         } catch(_) {}
-        // Print view popup in gmaps mode
-        const openPrint = document.getElementById('openPrintView');
-        if (openPrint) {
-          openPrint.addEventListener('click', ()=>{
-            const w = window.open('', '_blank'); if (!w) return;
-            const esc = (s)=> (s==null?'':String(s));
-            const rows = voters.map(v=>`<tr><td>${esc(v.VoterID)}</td><td>${esc(v.Last_Name)}, ${esc(v.First_Name)}</td><td>${esc((v.Voter_Address||'').replace(/\n/g,'<br>'))}</td><td>${esc(v.Phone_Number||'')}</td><td>${esc(v.Birthday||'')}</td><td>${esc(v.Email_Address||'')}</td><td>${esc(v.Party||'')}</td></tr>`).join('');
-            const html = `<!doctype html><html><head><meta charset="utf-8"><title>Voter List</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"><style>@media print{@page{size:landscape;margin:0.25in}} table{font-size:12px}</style></head><body class=\"p-3\"><h5>Voter List</h5><table class=\"table table-striped table-bordered\"><thead class=\"table-light\"><tr><th>Voter ID</th><th>Name</th><th>Address</th><th>Phone</th><th>DOB</th><th>Email</th><th>Party</th></tr></thead><tbody>${rows}</tbody></table><script>window.print()<\/script></body></html>`;
-            w.document.open(); w.document.write(html); w.document.close();
-          });
-        }
+        // Print view popup in gmaps mode temporarily disabled due to parsing issues on some browsers
     });
     </script>
     <!-- Bootstrap bundle (required for modal, etc.) -->
