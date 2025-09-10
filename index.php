@@ -668,7 +668,6 @@ $display_fields = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Find Voters Within Radius</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
@@ -794,8 +793,33 @@ $display_fields = [
                 "<?php echo htmlspecialchars($address); ?>" for county <?php echo htmlspecialchars($county); ?><?php echo ($party && $party !== 'ALL') ? ", party $party" : ''; ?>.
                 <br>
                 Tip: ensure the address is within the selected Florida county, and try a slightly larger radius.
-            </div>
+</div>
 <?php endif; ?>
+    </div>
+    
+    <!-- Start tip modal -->
+    <div class="modal fade" id="startTipModal" tabindex="-1" aria-labelledby="startTipLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="startTipLabel">Pick a custom starting point</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Click "Start picking" and then click anywhere on the map to set your starting point. We'll reorder the route from that location. Click "Use search address" to reset.</p>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" value="1" id="startTipDontShow">
+              <label class="form-check-label" for="startTipDontShow">
+                Don't show this tip next time
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="startTipConfirm">Start picking</button>
+          </div>
+        </div>
+      </div>
     </div>
     <?php if (!empty($debug_log)): ?>
     <div class="container mt-4">
@@ -833,6 +857,28 @@ $display_fields = [
         }
         return route.map(idx=>points[idx]);
     }
+
+    function computeRouteFromOrigin(points, oLat, oLon) {
+        if (!points.length) return [];
+        const n = points.length;
+        const visited = new Array(n).fill(false);
+        let currentLat = oLat, currentLon = oLon;
+        const order = [];
+        for (let k=0;k<n;k++){
+            let best = -1, bestD = Infinity;
+            for (let i=0;i<n;i++){
+                if (visited[i]) continue;
+                const d = haversineDistance(currentLat,currentLon,points[i].Latitude,points[i].Longitude);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best === -1) break;
+            visited[best] = true;
+            order.push(points[best]);
+            currentLat = points[best].Latitude;
+            currentLon = points[best].Longitude;
+        }
+        return order;
+    }
     function sortByStreet(points) {
         return points.slice().sort((a,b)=>{
             const addrA=(a.Voter_Address||'').split('\n')[0], addrB=(b.Voter_Address||'').split('\n')[0];
@@ -859,8 +905,103 @@ $display_fields = [
         } catch (e) {
             map.setView([lat,lon], 15);
         }
+        const origin = {lat, lon};
+        let start = {lat, lon};
+        let startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
+        // Shared picking state and helpers
+        let picking = false;
+        let pickBtnRef = null;
+        const setCursor = (v)=>{ map.getContainer().style.cursor = v ? 'crosshair' : ''; };
+        function deactivatePicking(){ picking=false; setCursor(false); if (pickBtnRef){ pickBtnRef.classList.remove('active'); pickBtnRef.setAttribute('aria-pressed','false'); } }
+        function updateStart(latlng){
+            start = {lat: latlng.lat, lon: latlng.lng};
+            if (startMarker) { try { map.removeLayer(startMarker); } catch(e){} }
+            startMarker = L.circleMarker([start.lat,start.lon],{radius:7,weight:2,color:'#2e7d32',fillColor:'#66bb6a',fillOpacity:0.9}).addTo(map).bindPopup('Start');
+            renderCurrent();
+        }
+
         const optimized=computeOptimalRoute(voters), streetSorted=sortByStreet(voters);
         const markerLayer=L.layerGroup().addTo(map); let routeLine=null;
+
+        // Party color map
+        const partyColor = (p)=>{
+            switch((p||'').toUpperCase()){case 'REP': return '#d32f2f'; case 'DEM': return '#1976d2'; case 'NPA': return '#616161'; default: return '#8e8e8e';}
+        };
+
+        // Legend control
+        const legend = L.control({position:'bottomright'});
+        legend.onAdd = function(){
+            const div = L.DomUtil.create('div','card p-2');
+            div.style.fontSize='12px';
+            div.innerHTML = `
+                <div class="fw-bold mb-1">Legend</div>
+                <div><span style="display:inline-block;width:10px;height:10px;background:#1976d2;border-radius:50%;margin-right:6px"></span>Democrat</div>
+                <div><span style="display:inline-block;width:10px;height:10px;background:#d32f2f;border-radius:50%;margin-right:6px"></span>Republican</div>
+                <div><span style="display:inline-block;width:10px;height:10px;background:#616161;border-radius:50%;margin-right:6px"></span>No Party</div>
+            `;
+            return div;
+        };
+        legend.addTo(map);
+        // Controls
+        const routeToggle = (function(){
+            const sel = document.getElementById('sortOption');
+            let cb = document.getElementById('showRoute');
+            if (!cb && sel && sel.parentElement){
+                cb = document.createElement('input');
+                cb.type='checkbox'; cb.id='showRoute'; cb.className='form-check-input ms-3'; cb.checked=true;
+                const lbl = document.createElement('label');
+                lbl.className='form-check-label ms-1'; lbl.setAttribute('for','showRoute'); lbl.textContent='Show route';
+                const wrap = document.createElement('div'); wrap.className='form-check d-flex align-items-center ms-2';
+                wrap.appendChild(cb); wrap.appendChild(lbl);
+                sel.parentElement.appendChild(wrap);
+            }
+            return cb;
+        })();
+
+        // Start picker controls
+        (function(){
+            const sel = document.getElementById('sortOption');
+            if (!sel || !sel.parentElement) return;
+
+            // Group container to avoid layout shift
+            const toolbar = document.createElement('div');
+            toolbar.className = 'btn-toolbar ms-2';
+            const group = document.createElement('div');
+            group.className = 'btn-group btn-group-sm';
+            toolbar.appendChild(group);
+
+            const pickBtn = document.createElement('button');
+            pickBtn.type='button'; pickBtn.className='btn btn-outline-secondary'; pickBtn.textContent='Pick start on map';
+            const resetBtn = document.createElement('button');
+            resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Use search address';
+            group.appendChild(pickBtn);
+            group.appendChild(resetBtn);
+            sel.parentElement.appendChild(toolbar);
+
+            pickBtnRef = pickBtn;
+            map.on('click', (e)=>{ if (!picking) return; deactivatePicking(); updateStart(e.latlng); });
+
+            function beginPickFlow(){
+                const hideTip = localStorage.getItem('hideStartTip') === '1';
+                if (hideTip) { picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true'); return; }
+                const modalEl = document.getElementById('startTipModal');
+                if (!modalEl) { picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true'); return; }
+                const modal = new bootstrap.Modal(modalEl);
+                const confirmBtn = modalEl.querySelector('#startTipConfirm');
+                const chk = modalEl.querySelector('#startTipDontShow');
+                const onConfirm = ()=>{
+                    if (chk && chk.checked) localStorage.setItem('hideStartTip','1');
+                    modal.hide(); picking=true; setCursor(true); pickBtn.classList.add('active'); pickBtn.setAttribute('aria-pressed','true');
+                    confirmBtn.removeEventListener('click', onConfirm);
+                };
+                confirmBtn.addEventListener('click', onConfirm);
+                modal.show();
+            }
+
+            pickBtn.addEventListener('click', ()=>{ beginPickFlow(); });
+            resetBtn.addEventListener('click', ()=>{ picking=false; setCursor(false); updateStart({lat, lng: lon}); });
+        })();
+
         function render(list){
             const tbody=document.querySelector('table tbody');
             if(tbody){const rows=Array.from(tbody.querySelectorAll('tr')), rowMap={};
@@ -868,16 +1009,44 @@ $display_fields = [
                 list.forEach(v=>{const row=rowMap[v.VoterID]; if(row)tbody.appendChild(row);});
             }
             markerLayer.clearLayers(); if(routeLine){map.removeLayer(routeLine); routeLine=null;}
-            const path=[]; list.forEach(v=>{path.push([v.Latitude,v.Longitude]);
-                markerLayer.addLayer(L.marker([v.Latitude,v.Longitude]).bindPopup(`${v.Voter_Name}<br>${v.Voter_Address}`));
+            const path=[];
+            const hasCustomStart = Math.abs(start.lat - origin.lat) > 1e-6 || Math.abs(start.lon - origin.lon) > 1e-6;
+            if (hasCustomStart) { path.push([start.lat, start.lon]); }
+            list.forEach((v,idx)=>{path.push([v.Latitude,v.Longitude]);
+                const cm = L.circleMarker([v.Latitude,v.Longitude],{radius:6,weight:2,color:'#333',fillColor:partyColor(v.Party),fillOpacity:0.9});
+                const btnId = `setStart_${v.VoterID}`;
+                cm.bindPopup(`${idx+1}. ${v.Voter_Name}<br>${v.Voter_Address}<br><button type="button" class="btn btn-sm btn-outline-success mt-1" id="${btnId}">Set as start</button>`);
+                cm.on('popupopen', ()=>{
+                    const b = document.getElementById(btnId);
+                    if (b) b.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); updateStart({lat: v.Latitude, lng: v.Longitude}); cm.closePopup(); });
+                });
+                cm.on('click', (e)=>{
+                    if (picking) { L.DomEvent.stop(e); deactivatePicking(); updateStart(e.latlng); }
+                });
+                markerLayer.addLayer(cm);
             });
-            if(path.length)routeLine=L.polyline(path,{color:'blue'}).addTo(map);
+            if(path.length && routeToggle && routeToggle.checked) routeLine=L.polyline(path,{color:'#1565c0',weight:3,opacity:0.8}).addTo(map);
+        }
+        function renderCurrent(){
+            const sortSel=document.getElementById('sortOption');
+            const useStreet = sortSel && sortSel.value==='street';
+            const hasCustomStart = Math.abs(start.lat - origin.lat) > 1e-6 || Math.abs(start.lon - origin.lon) > 1e-6;
+            let routeList;
+            if (useStreet) {
+                routeList = streetSorted;
+            } else {
+                routeList = hasCustomStart ? computeRouteFromOrigin(voters, start.lat, start.lon) : optimized;
+            }
+            render(routeList);
         }
         const sortSel=document.getElementById('sortOption');
-        if(sortSel){sortSel.addEventListener('change',()=>{render(sortSel.value==='street'?streetSorted:optimized);});}
-        render(optimized);
+        if(sortSel){sortSel.addEventListener('change',()=>{renderCurrent();});}
+        if(routeToggle){routeToggle.addEventListener('change',()=>{renderCurrent();});}
+        renderCurrent();
     });
     </script>
+    <!-- Bootstrap bundle (required for modal, etc.) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     const formEl = document.querySelector('form');
     if (formEl) {
