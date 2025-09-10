@@ -838,6 +838,11 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 45vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; transform: translateY(100%); transition: transform 240ms cubic-bezier(0.4, 0.0, 0.2, 1); box-shadow: 0 -4px 16px rgba(0,0,0,0.12); z-index: 1300; border-top-left-radius: 10px; border-top-right-radius: 10px; }
       #resultsPanel.show { transform: translateY(0); }
       .tray-handle { width: 36px; height: 4px; border-radius: 999px; background: #c8c8c8; display: inline-block; }
+      /* Subtle hover/focus styles */
+      #resultsTab .btn, #resultsPanel .btn { transition: box-shadow .15s ease, transform .05s ease; }
+      #resultsTab .btn:hover, #resultsPanel .btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+      #resultsTab .btn:active, #resultsPanel .btn:active { transform: translateY(1px); }
+      #sidebar .sidebar-body .form-control:focus, #sidebar .sidebar-body .form-select:focus { box-shadow: 0 0 0 .2rem rgba(25,118,210,.2); border-color: #1976d2; }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
@@ -888,10 +893,10 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
           <input type="checkbox" id="showRoute" class="form-check-input" checked>
           <label for="showRoute" class="form-check-label">Show route</label>
         </div>
-        <div class="mt-2 d-flex gap-2">
-          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmResetStart">Reset starting address</button>
-        </div>
         <?php if ($_SERVER["REQUEST_METHOD"] === "POST"): ?>
+        <div class="mt-2 d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="gmResetStart">Reset Route Start</button>
+        </div>
         <div class="mt-2 small text-muted">
           Tip: click any map pin to view details and set it as your route start. Use “Reset starting address” to revert to the search address.
         </div>
@@ -1160,15 +1165,16 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
             return cb;
         })();
 
-        // Start controls: only a reset button; clicking a pin uses the popup button to set start
+        // Start controls: only a reset button (after search); clicking a pin uses the popup button to set start
         (function(){
+            const isPostStart = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST") ?>;
             let resetBtn = document.getElementById('gmResetStart');
-            if (!resetBtn) {
+            if (!resetBtn && isPostStart) {
                 const sel = document.getElementById('sortOption');
                 if (!sel || !sel.parentElement) return;
                 const toolbar = document.createElement('div'); toolbar.className = 'btn-toolbar ms-2';
                 const group = document.createElement('div'); group.className = 'btn-group btn-group-sm'; toolbar.appendChild(group);
-                resetBtn = document.createElement('button'); resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Reset starting address';
+                resetBtn = document.createElement('button'); resetBtn.type='button'; resetBtn.className='btn btn-outline-secondary'; resetBtn.textContent='Reset Route Start';
                 group.appendChild(resetBtn); sel.parentElement.appendChild(toolbar);
             }
             if (resetBtn) resetBtn.addEventListener('click', ()=>{ updateStart({lat, lng: lon}); });
