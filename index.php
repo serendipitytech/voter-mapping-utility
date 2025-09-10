@@ -893,7 +893,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
     <div id="resultsPanel" class="shadow">
       <div class="d-flex align-items-center justify-content-between p-2 border-bottom bg-light">
         <strong class="small mb-0">Results</strong>
-        <button id="hideResultsBtn" class="btn btn-outline-secondary btn-sm">Hide Results</button>
+        <button id="hideResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Hide Results</button>
       </div>
       <?php if (!empty($voters)): ?>
         <div class="p-2">
@@ -1066,6 +1066,12 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         const lat=<?php echo $latitude ?? 29.0283; ?>, lon=<?php echo $longitude ?? -81.3031; ?>;
         const radiusInMeters=<?php echo isset($radius)?$radius*1609.34:1609.34; ?>;
         const map=L.map('map').setView([lat,lon],14);
+        // Ensure Leaflet recalculates size after layout/loads
+        try {
+          setTimeout(()=> map.invalidateSize(), 250);
+          window.addEventListener('load', ()=> setTimeout(()=> map.invalidateSize(), 120));
+          window.addEventListener('resize', ()=> setTimeout(()=> map.invalidateSize(), 120));
+        } catch(_) {}
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
         L.marker([lat,lon]).addTo(map).bindPopup("Search Address").openPopup();
         const radiusCircle = L.circle([lat,lon],{radius:radiusInMeters,color:'red',fillOpacity:0.2}).addTo(map);
