@@ -822,8 +822,8 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       #sidebar .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; }
       #sidebar .sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid #eee; }
       #resultsToggle { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1000; }
-      #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 40vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; display: none; }
-      #resultsPanel.show { display: block; }
+      #resultsPanel { position: absolute; left: 320px; right: 0; bottom: 0; max-height: 45vh; background: #fff; border-top: 1px solid #e0e0e0; overflow: auto; transform: translateY(100%); transition: transform 200ms ease-in-out; box-shadow: 0 -4px 16px rgba(0,0,0,0.08); }
+      #resultsPanel.show { transform: translateY(0); }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
@@ -888,7 +888,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
     </div>
     <div id="map"></div>
     <div id="resultsToggle" class="btn-group">
-      <button id="toggleResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Results</button>
+      <button id="toggleResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Show Results</button>
     </div>
     <div id="resultsPanel" class="shadow">
       <?php if (!empty($voters)): ?>
@@ -1208,11 +1208,18 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         if(sortSel){sortSel.addEventListener('change',()=>{renderCurrent();});}
         if(routeToggle){routeToggle.addEventListener('change',()=>{renderCurrent();});}
         renderCurrent();
-        // Toggle results panel in gmaps mode
+        // Toggle results panel in gmaps mode with button label + map resize
         try {
           const toggleBtn = document.getElementById('toggleResultsBtn');
           const panel = document.getElementById('resultsPanel');
-          if (toggleBtn && panel) { toggleBtn.addEventListener('click', ()=> panel.classList.toggle('show')); }
+          function setBtnLabel(){ if (!toggleBtn) return; toggleBtn.textContent = panel.classList.contains('show') ? 'Hide Results' : 'Show Results'; }
+          if (toggleBtn && panel) {
+            toggleBtn.addEventListener('click', ()=>{ panel.classList.toggle('show'); setBtnLabel(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 210); });
+            setBtnLabel();
+          }
+          // Auto-open after successful search
+          const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
+          if (panel && autoShow) { panel.classList.add('show'); setBtnLabel(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 210); }
         } catch(_) {}
         // Print view popup in gmaps mode
         const openPrint = document.getElementById('openPrintView');
