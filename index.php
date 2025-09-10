@@ -843,9 +843,11 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       #resultsTab .btn:hover, #resultsPanel .btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,.2); }
       #resultsTab .btn:active, #resultsPanel .btn:active { transform: translateY(1px); }
       #sidebar .sidebar-body .form-control:focus, #sidebar .sidebar-body .form-select:focus { box-shadow: 0 0 0 .2rem rgba(25,118,210,.2); border-color: #1976d2; }
-      /* Segmented control active look */
-      .btn-outline-primary.active { color: #fff; background-color: #1976d2; border-color: #1976d2; }
-      .btn-outline-primary:hover { border-color: #1976d2; color: #1976d2; }
+      /* Segmented control states */
+      .btn-outline-primary.active,
+      .btn-outline-primary.active:focus,
+      .btn-outline-primary.active:hover { color: #fff; background-color: #1976d2; border-color: #1976d2; }
+      .btn-outline-primary:not(.active):hover { border-color: #1976d2; color: #1976d2; background-color: rgba(25,118,210,.08); }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
@@ -889,9 +891,12 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         <div id="searchingIndicator" class="alert alert-info d-none mt-3"><div class="spinner-border spinner-border-sm me-2" role="status"></div><strong>Searching...</strong> Please wait.</div>
         <hr>
         <div class="d-flex align-items-center justify-content-between gap-2">
-          <div id="routeModeGroup" class="btn-group btn-group-sm" role="group" aria-label="Route order">
-            <button type="button" class="btn btn-outline-primary active" data-mode="optimized">Optimized</button>
-            <button type="button" class="btn btn-outline-primary" data-mode="street">Street</button>
+          <div>
+            <div class="small text-muted mb-1">Sort</div>
+            <div id="routeModeGroup" class="btn-group btn-group-sm" role="group" aria-label="Route order">
+              <button type="button" class="btn btn-outline-primary active" data-mode="optimized">By Route</button>
+              <button type="button" class="btn btn-outline-primary" data-mode="street">By Street</button>
+            </div>
           </div>
           <div class="form-check form-switch m-0">
             <input class="form-check-input" type="checkbox" id="showRoute" checked>
