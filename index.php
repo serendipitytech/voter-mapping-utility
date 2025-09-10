@@ -843,6 +843,9 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       #resultsTab .btn:hover, #resultsPanel .btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,.2); }
       #resultsTab .btn:active, #resultsPanel .btn:active { transform: translateY(1px); }
       #sidebar .sidebar-body .form-control:focus, #sidebar .sidebar-body .form-select:focus { box-shadow: 0 0 0 .2rem rgba(25,118,210,.2); border-color: #1976d2; }
+      /* Segmented control active look */
+      .btn-outline-primary.active { color: #fff; background-color: #1976d2; border-color: #1976d2; }
+      .btn-outline-primary:hover { border-color: #1976d2; color: #1976d2; }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
@@ -885,20 +888,27 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         </form>
         <div id="searchingIndicator" class="alert alert-info d-none mt-3"><div class="spinner-border spinner-border-sm me-2" role="status"></div><strong>Searching...</strong> Please wait.</div>
         <hr>
-        <div class="d-flex align-items-center gap-2">
-          <select id="sortOption" class="form-select form-select-sm w-auto">
+        <div class="d-flex align-items-center justify-content-between gap-2">
+          <div id="routeModeGroup" class="btn-group btn-group-sm" role="group" aria-label="Route order">
+            <button type="button" class="btn btn-outline-primary active" data-mode="optimized">Optimized</button>
+            <button type="button" class="btn btn-outline-primary" data-mode="street">Street</button>
+          </div>
+          <div class="form-check form-switch m-0">
+            <input class="form-check-input" type="checkbox" id="showRoute" checked>
+            <label class="form-check-label" for="showRoute">Show route</label>
+          </div>
+          <!-- keep the select for compatibility but hide it -->
+          <select id="sortOption" class="d-none">
             <option value="optimized" selected>Optimized</option>
             <option value="street">Street</option>
           </select>
-          <input type="checkbox" id="showRoute" class="form-check-input" checked>
-          <label for="showRoute" class="form-check-label">Show route</label>
         </div>
         <?php if ($_SERVER["REQUEST_METHOD"] === "POST"): ?>
         <div class="mt-2 d-flex gap-2">
           <button type="button" class="btn btn-outline-secondary btn-sm" id="gmResetStart">Reset Route Start</button>
         </div>
         <div class="mt-2 small text-muted">
-          Tip: click any map pin to view details and set it as your route start. Use “Reset starting address” to revert to the search address.
+          Tip: click any map pin to view details and set it as your route start. Use “Reset Route Start” to revert to the search address.
         </div>
         <?php endif; ?>
       </div>
@@ -1217,6 +1227,20 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
         }
         const sortSel=document.getElementById('sortOption');
         if(sortSel){sortSel.addEventListener('change',()=>{renderCurrent();});}
+        // Segmented control sync for route mode (Optimized/Street)
+        (function(){
+          const group = document.getElementById('routeModeGroup');
+          if (!group) return;
+          const btns = Array.from(group.querySelectorAll('[data-mode]'));
+          function setActive(mode){
+            btns.forEach(b=> b.classList.toggle('active', b.getAttribute('data-mode')===mode));
+            if (sortSel) sortSel.value = mode;
+            renderCurrent();
+          }
+          // initialize from current select
+          setActive(sortSel ? sortSel.value : 'optimized');
+          btns.forEach(b=> b.addEventListener('click', ()=> setActive(b.getAttribute('data-mode')) ));
+        })();
         if(routeToggle){routeToggle.addEventListener('change',()=>{renderCurrent();});}
         renderCurrent();
         // Toggle results panel in gmaps mode with button label + map resize
