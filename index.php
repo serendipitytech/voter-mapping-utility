@@ -830,7 +830,7 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       body { margin: 0; }
       #map { position: absolute; top: 0; bottom: 0; right: 0; left: 320px; }
       #sidebar { position: absolute; top: 0; bottom: 0; left: 0; width: 320px; background: #fff; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
-      #sidebar .sidebar-body { padding: 12px; overflow-y: auto; }
+      #sidebar .sidebar-body { padding: 16px; overflow-y: auto; }
       #sidebar .sidebar-header { padding: 12px; border-bottom: 1px solid #eee; }
       #sidebar .sidebar-footer { margin-top: auto; padding: 12px; border-top: 1px solid #eee; }
       #resultsTab { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 1000; }
@@ -899,9 +899,11 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
       </div>
     </div>
     <div id="map"></div>
+    <?php if (!empty($voters)): ?>
     <div id="resultsTab" class="btn-group">
       <button id="showResultsBtn" class="btn btn-outline-secondary btn-sm rounded-pill">Show Results</button>
     </div>
+    <?php endif; ?>
     <div id="resultsPanel" class="shadow">
       <div class="d-flex align-items-center justify-content-between p-2 border-bottom bg-light">
         <strong class="small mb-0">Results</strong>
@@ -1236,12 +1238,13 @@ $gmaps = (isset($_GET['gmaps']) && $_GET['gmaps'] === '1');
           const hideBtn = document.getElementById('hideResultsBtn');
           const tab = document.getElementById('resultsTab');
           const panel = document.getElementById('resultsPanel');
-          function syncTab(){ if (!tab || !panel) return; tab.style.display = panel.classList.contains('show') ? 'none' : 'block'; }
+          const hasVoters = <?= json_encode(!empty($voters)) ?>;
+          function syncTab(){ if (!tab || !panel) return; tab.style.display = (!hasVoters || panel.classList.contains('show')) ? 'none' : 'block'; }
           if (showBtn && panel) showBtn.addEventListener('click', ()=>{ panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); });
           if (hideBtn && panel) hideBtn.addEventListener('click', ()=>{ panel.classList.remove('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); });
           // Auto-open after successful search
           const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
-          if (panel && autoShow) { panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
+          if (panel) { if (autoShow) panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
         } catch(_) {}
         // Print view popup in gmaps mode
         const openPrint = document.getElementById('openPrintView');
