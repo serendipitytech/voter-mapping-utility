@@ -1262,7 +1262,32 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
           const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
           if (panel) { if (autoShow) panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
         } catch(_) {}
-        // Print view popup in gmaps mode temporarily disabled due to parsing issues on some browsers
+        // Print view popup: submit voters + map params to print_view.php in a new tab
+        (function(){
+          var openPrint = document.getElementById('openPrintView');
+          if (!openPrint) return;
+          openPrint.addEventListener('click', function(){
+            try {
+              if (!Array.isArray(voters) || voters.length === 0) return;
+              var form = document.createElement('form');
+              form.method = 'POST';
+              form.action = 'print_view.php';
+              form.target = '_blank';
+              function add(name, value){ var i = document.createElement('input'); i.type='hidden'; i.name=name; i.value=value; form.appendChild(i); }
+              add('voters_json', JSON.stringify(voters));
+              add('lat', String(lat));
+              add('lon', String(lon));
+              add('radius_meters', String(radiusInMeters));
+              add('address', <?php echo json_encode($address ?? ''); ?>);
+              add('radius', <?php echo json_encode(isset($radius)?$radius:''); ?>);
+              add('county', <?php echo json_encode($county ?? ''); ?>);
+              add('party', <?php echo json_encode($party ?? ''); ?>);
+              document.body.appendChild(form);
+              form.submit();
+              setTimeout(function(){ try { document.body.removeChild(form); } catch(_){} }, 1000);
+            } catch(e){}
+          });
+        })();
     });
     </script>
     <!-- Bootstrap bundle (required for modal, etc.) -->
