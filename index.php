@@ -671,6 +671,7 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
     <title>Find Voters Within Radius</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <?php if (!$gmaps): ?>
     <style>
@@ -848,11 +849,159 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
       .btn-outline-primary.active:focus,
       .btn-outline-primary.active:hover { color: #fff; background-color: #1976d2; border-color: #1976d2; }
       .btn-outline-primary:not(.active):hover { border-color: #1976d2; color: #1976d2; background-color: rgba(25,118,210,.08); }
+      /* Mobile adjustments */
+      .mobile-only { display: none; }
+      
+      /* Full-screen loading overlay */
+      .mobile-loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        color: white;
+        text-align: center;
+        padding: 20px;
+      }
+      
+      .mobile-loading-overlay .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        border-width: 0.3em;
+        margin-bottom: 1rem;
+      }
+      
+      .mobile-loading-overlay h4 {
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+      }
+      
+      .mobile-loading-overlay p {
+        margin-bottom: 0;
+        opacity: 0.9;
+      }
+      
+      /* Bottom sheet for results */
+      .mobile-results-sheet {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+        transform: translateY(100%);
+        transition: transform 300ms ease-out;
+        z-index: 1500;
+        max-height: 60vh;
+        overflow: hidden;
+      }
+      
+      .mobile-results-sheet.show {
+        transform: translateY(0);
+      }
+      
+      .mobile-results-sheet .sheet-header {
+        padding: 16px 20px 8px;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #f8f9fa;
+      }
+      
+      .mobile-results-sheet .sheet-content {
+        padding: 16px 20px;
+        max-height: calc(60vh - 60px);
+        overflow-y: auto;
+      }
+      
+      .mobile-results-sheet .drag-handle {
+        width: 40px;
+        height: 4px;
+        background: #dee2e6;
+        border-radius: 2px;
+        margin: 0 auto 8px;
+      }
+      
+      /* Floating Action Button */
+      .mobile-fab {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: #1976d2;
+        color: white;
+        border: none;
+        box-shadow: 0 4px 12px rgba(25, 118, 210, 0.4);
+        z-index: 1600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        transition: all 200ms ease;
+      }
+      
+      .mobile-fab:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 16px rgba(25, 118, 210, 0.5);
+      }
+      
+      .mobile-fab:active {
+        transform: scale(0.95);
+      }
+      
+      /* Toast notifications */
+      .mobile-toast {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        right: 20px;
+        background: #28a745;
+        color: white;
+        padding: 12px 16px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 1700;
+        transform: translateY(-100px);
+        transition: transform 300ms ease-out;
+      }
+      
+      .mobile-toast.show {
+        transform: translateY(0);
+      }
+      
+      .mobile-toast.error {
+        background: #dc3545;
+      }
+      
+      @media (max-width: 768px) {
+        #map { left: 0; }
+        #sidebar { width: 100%; left: 0; right: 0; transform: translateX(0); transition: transform 220ms ease; z-index: 1400; }
+        #sidebar.mobile-hidden { transform: translateX(-100%); }
+        #resultsTab { left: 12px; }
+        #resultsPanel { left: 0; }
+        .mobile-only { display: inline-block; }
+        .mobile-open-sidebar { position: absolute; top: 12px; left: 12px; z-index: 1450; }
+        
+        /* Hide desktop results panel on mobile */
+        #resultsPanel { display: none; }
+        #resultsTab { display: none; }
+      }
     </style>
     <div id="sidebar" class="shadow-sm">
       <div class="sidebar-header">
-        <div class="d-flex align-items-center">
-          <h6 class="mb-0 text-truncate" style="max-width:288px">Voter Radius Map Tool</h6>
+        <div class="d-flex align-items-center justify-content-between">
+          <h6 class="mb-0 text-truncate" style="max-width:240px">Voter Radius Map Tool</h6>
+          <button type="button" id="hideSidebarBtn" class="btn btn-outline-secondary btn-sm mobile-only">Hide</button>
         </div>
       </div>
       <div class="sidebar-body">
@@ -927,6 +1076,39 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
       </div>
     </div>
     <div id="map"></div>
+    <button type="button" id="openSidebarBtn" class="btn btn-primary btn-sm mobile-open-sidebar mobile-only">Options</button>
+    
+    <!-- Mobile Loading Overlay -->
+    <div id="mobileLoadingOverlay" class="mobile-loading-overlay d-none">
+      <div class="spinner-border" role="status" aria-hidden="true"></div>
+      <h4>Searching for Voters</h4>
+      <p>Please wait while we find voters in your area...</p>
+    </div>
+    
+    <!-- Mobile Results Bottom Sheet -->
+    <div id="mobileResultsSheet" class="mobile-results-sheet mobile-only">
+      <div class="sheet-header">
+        <div class="drag-handle"></div>
+        <h6 class="mb-0">Search Results</h6>
+        <button type="button" id="closeResultsSheet" class="btn btn-sm btn-outline-secondary">Close</button>
+      </div>
+      <div class="sheet-content" id="mobileResultsContent">
+        <!-- Results will be populated here -->
+      </div>
+    </div>
+    
+    <!-- Floating Action Button for New Search -->
+    <button type="button" id="mobileNewSearchFab" class="mobile-fab mobile-only d-none">
+      <i class="fas fa-search"></i>
+    </button>
+    
+    <!-- Mobile Toast Notifications -->
+    <div id="mobileToast" class="mobile-toast mobile-only">
+      <div class="d-flex align-items-center">
+        <i class="fas fa-check-circle me-2"></i>
+        <span id="toastMessage">Search completed!</span>
+      </div>
+    </div>
     <?php $is_post = ($_SERVER["REQUEST_METHOD"] === "POST"); ?>
     <?php if ($is_post): ?>
     <div id="resultsTab" class="btn-group">
@@ -1262,6 +1444,182 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
           const autoShow = <?= json_encode($_SERVER["REQUEST_METHOD"] === "POST" && empty($error) && !empty($voters)) ?>;
           if (panel) { if (autoShow) panel.classList.add('show'); syncTab(); setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 220); }
         } catch(_) {}
+        // Mobile sidebar show/hide and new mobile workflow
+        try {
+          const sidebar = document.getElementById('sidebar');
+          const openBtn = document.getElementById('openSidebarBtn');
+          const hideBtn = document.getElementById('hideSidebarBtn');
+          const loadingOverlay = document.getElementById('mobileLoadingOverlay');
+          const resultsSheet = document.getElementById('mobileResultsSheet');
+          const resultsContent = document.getElementById('mobileResultsContent');
+          const newSearchFab = document.getElementById('mobileNewSearchFab');
+          const closeResultsBtn = document.getElementById('closeResultsSheet');
+          const toast = document.getElementById('mobileToast');
+          const toastMessage = document.getElementById('toastMessage');
+          
+          const isMobile = () => window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+          
+          function showSidebar(){ 
+            if (!sidebar) return; 
+            sidebar.classList.remove('mobile-hidden'); 
+            if (openBtn) openBtn.style.display='none'; 
+            setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 200); 
+          }
+          
+          function hideSidebar(){ 
+            if (!sidebar) return; 
+            sidebar.classList.add('mobile-hidden'); 
+            if (openBtn) openBtn.style.display='inline-block'; 
+            setTimeout(()=>{ try{ map.invalidateSize(); }catch(_){} }, 200); 
+          }
+          
+          function showLoadingOverlay() {
+            if (loadingOverlay && isMobile()) {
+              loadingOverlay.classList.remove('d-none');
+            }
+          }
+          
+          function hideLoadingOverlay() {
+            if (loadingOverlay) {
+              loadingOverlay.classList.add('d-none');
+            }
+          }
+          
+          function showResultsSheet() {
+            if (resultsSheet && isMobile()) {
+              resultsSheet.classList.add('show');
+              if (newSearchFab) newSearchFab.classList.remove('d-none');
+            }
+          }
+          
+          function hideResultsSheet() {
+            if (resultsSheet) {
+              resultsSheet.classList.remove('show');
+            }
+          }
+          
+          function showToast(message, isError = false) {
+            if (toast && toastMessage && isMobile()) {
+              toastMessage.textContent = message;
+              toast.classList.remove('error');
+              if (isError) toast.classList.add('error');
+              toast.classList.add('show');
+              setTimeout(() => toast.classList.remove('show'), 3000);
+            }
+          }
+          
+          function populateMobileResults() {
+            if (!resultsContent || !isMobile()) return;
+            
+            const voters = <?= json_encode($voters ?? []) ?>;
+            const hasResults = voters && voters.length > 0;
+            
+            if (hasResults) {
+              let html = `<div class="mb-3"><strong>Found ${voters.length} voters</strong></div>`;
+              html += '<div class="list-group list-group-flush">';
+              
+              voters.slice(0, 10).forEach((voter, index) => {
+                const fullName = `${voter.Last_Name || ''}, ${voter.First_Name || ''}`.replace(/^, |, $/, '') || 'Unknown';
+                const party = voter.Party || 'N/A';
+                const address = voter.Voter_Address || 'No address';
+                const phone = voter.Phone_Number || '';
+                const email = voter.Email_Address || '';
+                const dob = voter.Birthday ? new Date(voter.Birthday).toLocaleDateString('en-US', {month: '2-digit', day: '2-digit'}) : '';
+                
+                // Format phone number
+                let formattedPhone = phone;
+                if (phone) {
+                  const cleanPhone = phone.replace(/[^0-9]/g, '');
+                  if (cleanPhone.length === 10) {
+                    formattedPhone = `(${cleanPhone.slice(0,3)}) ${cleanPhone.slice(3,6)}-${cleanPhone.slice(6)}`;
+                  }
+                }
+                
+                html += `
+                  <div class="list-group-item px-0">
+                    <div class="d-flex w-100 justify-content-between align-items-start">
+                      <div class="flex-grow-1">
+                        <h6 class="mb-1">${fullName}</h6>
+                        <p class="mb-1 small text-muted">${address.replace(/\n/g, ', ')}</p>
+                        ${formattedPhone ? `<small class="text-muted d-block">📞 ${formattedPhone}</small>` : ''}
+                        ${email ? `<small class="text-muted d-block">✉️ ${email}</small>` : ''}
+                        ${dob ? `<small class="text-muted d-block">🎂 ${dob}</small>` : ''}
+                      </div>
+                      <div class="text-end">
+                        <span class="badge bg-secondary">${party}</span>
+                        <div class="small text-muted mt-1">${voter.VoterID || ''}</div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              });
+              
+              if (voters.length > 10) {
+                html += `<div class="list-group-item px-0 text-center text-muted small">... and ${voters.length - 10} more voters</div>`;
+              }
+              
+              html += '</div>';
+              resultsContent.innerHTML = html;
+            } else {
+              resultsContent.innerHTML = '<div class="text-center text-muted py-4">No voters found. Try a slightly larger radius.</div>';
+            }
+          }
+          
+          // Start visible on mobile, hidden on larger screens
+          if (isMobile()) { 
+            showSidebar(); 
+          } else { 
+            hideSidebar(); 
+          }
+          
+          if (openBtn) openBtn.addEventListener('click', showSidebar);
+          if (hideBtn) hideBtn.addEventListener('click', hideSidebar);
+          if (closeResultsBtn) closeResultsBtn.addEventListener('click', hideResultsSheet);
+          if (newSearchFab) newSearchFab.addEventListener('click', () => {
+            hideResultsSheet();
+            showSidebar();
+          });
+          
+          // On resize, re-evaluate
+          window.addEventListener('resize', ()=>{ 
+            if (isMobile()) { 
+              showSidebar(); 
+            } else { 
+              hideSidebar(); 
+              hideResultsSheet();
+              hideLoadingOverlay();
+            } 
+          });
+          
+          // Enhanced form submission handling
+          const form = document.querySelector('#sidebar form');
+          if (form) {
+            form.addEventListener('submit', (e) => {
+              if (isMobile()) {
+                hideSidebar();
+                showLoadingOverlay();
+                // Keep sidebar hidden after search
+                setTimeout(() => {
+                  if (openBtn) openBtn.style.display = 'inline-block';
+                }, 100);
+              }
+            });
+          }
+          
+          // Show results after page load if we have them
+          const hasResults = <?= json_encode(!empty($voters)) ?>;
+          if (hasResults && isMobile()) {
+            populateMobileResults();
+            setTimeout(() => {
+              hideLoadingOverlay();
+              showResultsSheet();
+              showToast(`Found ${<?= json_encode(count($voters ?? [])) ?>} voters!`);
+              // Keep sidebar hidden, show Options button
+              if (openBtn) openBtn.style.display = 'inline-block';
+            }, 500);
+          }
+          
+        } catch(_) {}
         // Print view popup: submit voters + map params to print_view.php in a new tab
         (function(){
           var openPrint = document.getElementById('openPrintView');
@@ -1298,6 +1656,15 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
         formEl.addEventListener('submit', () => {
             const el = document.getElementById('searchingIndicator');
             if (el) el.classList.remove('d-none');
+            
+            // Show mobile loading overlay if on mobile
+            const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+            if (isMobile) {
+                const mobileOverlay = document.getElementById('mobileLoadingOverlay');
+                if (mobileOverlay) {
+                    mobileOverlay.classList.remove('d-none');
+                }
+            }
         });
     }
     </script>
