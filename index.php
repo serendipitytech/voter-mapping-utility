@@ -69,6 +69,81 @@ function sort_voters_by_address(&$voters) {
     });
 }
 
+// Normalize an address string into a comparable key (A-Z0-9 only)
+function normalize_address_key($s) {
+    $s = strtoupper(trim((string)$s));
+    // Standardize state label a bit
+    $s = preg_replace('/\bFLORIDA\b/', 'FL', $s);
+    // Remove all non-alphanumeric characters
+    $s = preg_replace('/[^A-Z0-9]+/', '', $s);
+    return $s;
+}
+
+// Attempt to look up coordinates from our geocoded DB first
+function db_lookup_geocode($pdo, $address, $county = null) {
+    try {
+        $norm = normalize_address_key($address);
+        // Build a comparable expression on full_address: strip spaces and punctuation to match $norm
+        $expr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(full_address), ' ', ''), ',', ''), '.', ''), '#', ''), '-', '')";
+        $sql = "SELECT lat, lon, full_address FROM geocoded_addresses WHERE $expr = :norm";
+        $params = [':norm' => $norm];
+        // If table has a county column, prefer same-county match
+        try {
+            $hasCounty = $pdo->query("SHOW COLUMNS FROM geocoded_addresses LIKE 'county'")->fetch(PDO::FETCH_ASSOC);
+            if ($hasCounty && $county) {
+                $sql .= " AND county = :county";
+                $params[':county'] = $county;
+            }
+        } catch (Exception $e) { /* ignore */ }
+        $sql .= " LIMIT 1";
+        $st = $pdo->prepare($sql);
+        $st->execute($params);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if ($row && isset($row['lat']) && isset($row['lon'])) {
+            debug_log('DB geocode hit', 'success', [
+                'matched_full_address' => $row['full_address'] ?? null,
+                'lat' => $row['lat'], 'lon' => $row['lon']
+            ]);
+            return [floatval($row['lat']), floatval($row['lon'])];
+        }
+
+        // Heuristic fallback: try loose matching by components (number + street + city + state + optional ZIP)
+        if (preg_match('/^\s*(\d+)\s+([^,]+),\s*([^,]+),\s*([A-Za-z]{2})\s*,?\s*(\d{5})?/i', $address, $m)) {
+            $num    = strtoupper(trim($m[1] ?? ''));
+            $street = strtoupper(trim($m[2] ?? ''));
+            $city   = strtoupper(trim($m[3] ?? ''));
+            $state  = strtoupper(trim($m[4] ?? ''));
+            $zip    = strtoupper(trim($m[5] ?? ''));
+
+            $sql2 = "SELECT lat, lon, full_address FROM geocoded_addresses WHERE UPPER(full_address) LIKE :numstreet AND UPPER(full_address) LIKE :city AND UPPER(full_address) LIKE :state";
+            $p2 = [
+                ':numstreet' => "%$num%$street%",
+                ':city' => "%$city%",
+                ':state' => "% $state%",
+            ];
+            try {
+                $hasCounty = $hasCounty ?? $pdo->query("SHOW COLUMNS FROM geocoded_addresses LIKE 'county'")->fetch(PDO::FETCH_ASSOC);
+                if ($hasCounty && $county) { $sql2 .= " AND county = :county"; $p2[':county'] = $county; }
+            } catch (Exception $e) { /* ignore */ }
+            if ($zip) { $sql2 .= " AND full_address RLIKE :zipend"; $p2[':zipend'] = "\\\s$zip$"; }
+            $sql2 .= " LIMIT 1";
+            $st2 = $pdo->prepare($sql2);
+            $st2->execute($p2);
+            $rw = $st2->fetch(PDO::FETCH_ASSOC);
+            if ($rw && isset($rw['lat']) && isset($rw['lon'])) {
+                debug_log('DB geocode hit (heuristic)', 'success', [
+                    'matched_full_address' => $rw['full_address'] ?? null,
+                    'lat' => $rw['lat'], 'lon' => $rw['lon']
+                ]);
+                return [floatval($rw['lat']), floatval($rw['lon'])];
+            }
+        }
+    } catch (Exception $e) {
+        debug_log('DB geocode lookup error', 'warning', $e->getMessage());
+    }
+    return [null, null];
+}
+
 function census_geocode($address) {
     $cacheDir = __DIR__ . '/cache';
     $cacheFile = $cacheDir . '/geocode_cache.json';
@@ -278,8 +353,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "Invalid party.";
     } else {
         $t_all = microtime(true);
-        list($latitude, $longitude) = census_geocode($address);
-        debug_log('Geocoding', 'info', "Address: $address, Latitude: $latitude, Longitude: $longitude");
+        // First try to resolve from our DB to avoid external geocoding mismatches
+        $tmp_geo_pdo = null;
+        try { $tmp_geo_pdo = get_pdo($geo_db); } catch (Exception $e) { debug_log('DB connect (geo) error', 'warning', $e->getMessage()); }
+        if ($tmp_geo_pdo) {
+            list($latitude, $longitude) = db_lookup_geocode($tmp_geo_pdo, $address, $county);
+        }
+        // Fallback to Census API if not found in DB
+        if (!$latitude || !$longitude) {
+            list($latitude, $longitude) = census_geocode($address);
+            debug_log('Geocoding (Census)', 'info', "Address: $address, Latitude: $latitude, Longitude: $longitude");
+        } else {
+            debug_log('Geocoding (DB)', 'info', "Address: $address, Latitude: $latitude, Longitude: $longitude");
+        }
         if ($latitude && $longitude) {
                 $geo_pdo = get_pdo($geo_db);
 
@@ -746,6 +832,11 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
                             <div class="spinner-border spinner-border-sm me-2" role="status"></div>
                             <strong>Searching...</strong> Please wait while we retrieve nearby voters.
                         </div>
+                        <?php if (!empty($error)): ?>
+                        <div class="alert alert-danger mt-3">
+                            <?= htmlspecialchars($error) ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -1038,6 +1129,11 @@ $gmaps = !(isset($_GET['gmaps']) && $_GET['gmaps'] === '0');
           </div>
         </form>
         <div id="searchingIndicator" class="alert alert-info d-none mt-3"><div class="spinner-border spinner-border-sm me-2" role="status"></div><strong>Searching...</strong> Please wait.</div>
+        <?php if (!empty($error)): ?>
+        <div class="alert alert-danger mt-3">
+          <?= htmlspecialchars($error) ?>
+        </div>
+        <?php endif; ?>
         <hr>
         <div class="d-flex align-items-center justify-content-between gap-2">
           <div>
