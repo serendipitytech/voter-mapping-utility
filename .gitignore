@@ -4,6 +4,8 @@
 # Environment config
 .env
 cache/geocode_cache.json
+\n+# Cache directory (runtime)
+/cache/
 
 # Local dev container files (do not commit)
 Dockerfile
